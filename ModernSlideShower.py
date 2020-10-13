@@ -1284,7 +1284,7 @@ def main_loop() -> None:
     # mglw.setup_basic_logging(20)  # logging.INFO
     window_cls = mglw.get_local_window_cls()
 
-    start_fullscreen = False
+    start_fullscreen = True
     if "-f" in sys.argv:
         start_fullscreen = not start_fullscreen
 
