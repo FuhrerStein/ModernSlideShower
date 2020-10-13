@@ -291,7 +291,8 @@ class ModernSlideShower(mglw.WindowConfig):
                        '''
     Usage shortcuts
     
-    [F1], [H]: show/hide this help window
+    [F1], [H] : show/hide this help window
+    [Escape], [middle mouse button] : exit program
     [,] [.] : rotate image left and right by 90°
     [M] : move image file out of folder tree into '--' subfolder
     [C] : copy image file out of folder tree into '++' subfolder
@@ -300,6 +301,7 @@ class ModernSlideShower(mglw.WindowConfig):
     [move mouse in circles clockwise] : show next image
     [move mouse in circles counterclockwise] : show previous image   
     [arrow up] : show random image
+    [L] : show/hide levels edit interface
     ''',
                        '''
     No images found
