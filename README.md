@@ -2,7 +2,8 @@
 Image viewer with smooth image mothion and easy navigation
 
 
-
+## Description
+Coming soon, stay tuned!
 
 
 ## Requirements
