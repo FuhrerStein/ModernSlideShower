@@ -6,8 +6,15 @@ Image viewer with smooth image mothion and easy navigation
 Coming soon, stay tuned!
 
 
-## Requirements
-Be sure to install requirements before use
+## Installation and requirements
+Download all project files and unpack them in a folder of your choice.
+
+Fist, you need to have Python installed on your system
+https://www.python.org/downloads/
+
+Second, some python modules need to be installed to run this program.
+To install those modules run:
 ```
 pip install -r requirements.txt
 ```
+Once install finished, you can run program by launching ModernSlideShower.py
