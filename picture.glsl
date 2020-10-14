@@ -16,7 +16,8 @@ uniform bool one_by_one;
 out vec2 uv0;
 out float zoom_frag;
 out float show_frag;
-out float show_amount_frag;
+out float show_amount_global;
+out float show_amount_global2;
 
 void main() {
 
@@ -33,7 +34,12 @@ void main() {
 //    show_frag = abs(show_amount) * 8 + in_position.y * (sign(show_amount) + 1) - 4.5;
 //    show_frag = clamp(abs(show_amount) * 8 + in_position.y * (sign(show_amount) + 1) - 4.5, 0., 1.2);
     show_frag = smoothstep(0, 4, abs(show_amount * (1.5 - sign(show_amount) / 2)) * 8 + (in_position.y - 1.5) * (sign(show_amount) + 1));
-    show_amount_frag = 1 - abs(show_amount);
+
+    show_frag = (in_position.y - 1 + show_amount * 4) * step(0, show_amount);
+    show_frag += smoothstep(0, .1, -show_amount);
+    show_amount_global = (1 - pow(show_amount, 2)) * step(0, show_amount);
+    show_amount_global2 = (1 - smoothstep(0.99, 1, show_amount)) * step(0, show_amount);
+//    show_amount_global = (show_amount) * step(0, show_amount);
 
     if (one_by_one)
     {
@@ -57,7 +63,8 @@ out vec4 fragColor;
 in vec2 uv0;
 in float zoom_frag;
 in float show_frag;
-in float show_amount_frag;
+in float show_amount_global;
+in float show_amount_global2;
 
 void main() {
 //    vec4 tempColor = texture(texture0, uv0);
@@ -88,9 +95,14 @@ void main() {
         imageAtomicAdd(histogram_texture, ivec2(tempColor.b * 255 + .5, 4), 1u);
     }
 
-    float closeness_to_edge = length(uv0.x - .5) * length(uv0.x - .5);
-    closeness_to_edge = smoothstep(0, .2, show_amount_frag) * smoothstep(0, .5, closeness_to_edge) * smoothstep(0, .1, closeness_to_edge);
-    fragColor = vec4(tempColor.rgb, show_frag * (1 - closeness_to_edge));
+    float closeness_to_edge = length(uv0 - vec2(.5));
+    float edge_width = 50;
+    closeness_to_edge = 1 / (uv0.x + .001) + 1 / (uv0.y + .001) + 1 / (1.001 - uv0.x) + 1 / (1.001 - uv0.y);
+    closeness_to_edge = clamp(closeness_to_edge * 1 * show_amount_global * .01, 0, 1);
+//    closeness_to_edge = smoothstep(0, .1, show_amount_frag) * smoothstep(0, .5, closeness_to_edge) * smoothstep(0, .8, closeness_to_edge);
+    //    closeness_to_edge = smoothstep(0, .2, closeness_to_edge) * show_amount_frag;
+    //    closeness_to_edge = clamp(smoothstep(0., .1, closeness_to_edge) + smoothstep(0., .8, closeness_to_edge), 0., 1.);
+    fragColor = vec4(tempColor.rgb, show_frag * (1 - closeness_to_edge * show_amount_global2 * 1));
 //    fragColor = vec4(tempColor.rgb, show_frag );
 }
 

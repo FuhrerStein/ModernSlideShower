@@ -648,6 +648,7 @@ class ModernSlideShower(mglw.WindowConfig):
             print("Could not complete file " + ["move", "copy"][do_copy], e)
             return
 
+        self.mouse_move_cumulative = self.mouse_move_cumulative * .05
         if not do_copy:
             self.image_list.pop(self.image_index)
             self.image_count = len(self.image_list)
@@ -710,8 +711,9 @@ class ModernSlideShower(mglw.WindowConfig):
             self.pic_position_future += correction_vector / 10
 
         if self.show_amount < 1:
-            self.show_amount = self.show_amount * .95 + .05
-            if self.show_amount > .999:
+            transition_speed = .08
+            self.show_amount = transition_speed + self.show_amount * (1 - transition_speed)
+            if self.show_amount > .9999:
                 self.show_amount = 1
                 self.release_texture(self.image_texture_old)
                 self.release_texture(self.current_texture_old)
@@ -987,7 +989,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.change_levels((dy - dx) / 1500)
         elif self.autoflip_speed != 0:
             d_coord = dx - dy
-            self.autoflip_speed += d_coord / 500 * (2 - math.copysign(1, self.autoflip_speed * d_coord))
+            self.autoflip_speed += d_coord / 500 * (1.5 - math.copysign(.5, self.autoflip_speed * d_coord))
         else:
             self.imgui.mouse_position_event(x, y, dx, dy)
             self.mouse_circle_tracking(dx, dy)
