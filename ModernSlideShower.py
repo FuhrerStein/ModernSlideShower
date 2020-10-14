@@ -31,9 +31,9 @@ import random
 #    todo: keyboard navigation on picture
 #    todo: show short image info
 #    todo: show full image info
+#    todo: explain about jpegtan in case it was not found
 #    todo: interface to adjust curves
 #    todo: different color curves
-#    todo: explain about jpegtan in case it was not found
 
 
 #    +todo: random image jump from mouse
@@ -231,9 +231,11 @@ class ModernSlideShower(mglw.WindowConfig):
     pic_angle_future = 0.
     gl_program = moderngl.program
     gl_program_round = moderngl.program
-    gl_program_histo = moderngl.program
+    gl_program_second = moderngl.program
     image_texture = moderngl.Texture
     current_texture = moderngl.Texture
+    image_texture_old = moderngl.Texture
+    current_texture_old = moderngl.Texture
     curve_texture = moderngl.TextureArray
     use_curves = False
     levels_enabled = True
@@ -284,7 +286,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
     mouse_direct_edit = 0
     empty_image_list = "Empty.jpg"
-
+    show_amount = 1.
 
     central_message_showing = False
     central_message = ["",
@@ -310,8 +312,13 @@ class ModernSlideShower(mglw.WindowConfig):
     You may pass a directory as a first argument to this 
     script, or put this script in a directory with images.
     Press H or F1 to close this window and to show help message.
+    ''',
+                       '''
+    No images found
+    No valid images found. Maybe all images were moved or deleted.     
+    Press H or F1 to close this window and to show help message.                
     '''
-                       ]
+    ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -338,6 +345,7 @@ class ModernSlideShower(mglw.WindowConfig):
         dummy_program_description = moderngl_window.meta.ProgramDescription()
         shaders = program.ProgramShaders.from_single(dummy_program_description, picture_program_text)
         self.gl_program = shaders.create()
+        self.gl_program_second = shaders.create()
         shaders = program.ProgramShaders.from_single(dummy_program_description, round_program_text)
         self.gl_program_round = shaders.create()
 
@@ -364,6 +372,7 @@ class ModernSlideShower(mglw.WindowConfig):
         else:
             self.load_image()
             self.schedule_pop_message(0)
+        self.show_amount = 1
 
     def previous_level_borders(self):
         self.levels_borders = self.levels_borders_previous
@@ -386,7 +395,6 @@ class ModernSlideShower(mglw.WindowConfig):
         self.round_vao = mglw.opengl.vao.VAO("round", mode=moderngl.POINTS)
         self.round_vao.buffer(points_array.astype('f4'), '2f', ['in_position'])
         self.round_vao.buffer(indices_array_p, 'i', ['in_index'])
-
 
     def generate_levels_texture(self, band=None):
         if band is None:
@@ -553,20 +561,22 @@ class ModernSlideShower(mglw.WindowConfig):
         dummy_image = Image.merge("RGB", bands)
         return dummy_image
 
-    def load_image(self):
-        def release_texture(texture):
-            if type(texture) is moderngl.texture.Texture:
-                try:
-                    texture.release()
-                except Exception as ex:
-                    pass
+    def release_texture(self, texture):
+        if type(texture) is moderngl.texture.Texture:
+            try:
+                texture.release()
+            except Exception:
+                pass
 
+    def load_image(self):
+
+        self.update_position_second_program()
         if not os.path.isfile(self.image_list[self.new_image_index]):
             if self.image_list[self.new_image_index] != self.empty_image_list:
                 self.find_next_existing_image()
         image_path = self.image_list[self.new_image_index]
-        image_texture_old = self.image_texture
-        current_texture_old = self.current_texture
+        self.image_texture_old = self.image_texture
+        self.current_texture_old = self.current_texture
         try:
             with Image.open(image_path) as img_buffer:
                 if img_buffer.mode == "RGB":
@@ -583,14 +593,16 @@ class ModernSlideShower(mglw.WindowConfig):
                 return
 
         self.image_texture = self.ctx.texture((self.im_object.width, self.im_object.height), 3, image_bytes)
+        self.image_texture.repeat_x = False
+        self.image_texture.repeat_y = False
         self.image_texture.build_mipmaps()
         self.image_texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
-        self.image_texture.use(5)
+        # self.image_texture.use(5)
         self.current_texture = self.image_texture
         self.image_index = self.new_image_index
 
-        release_texture(image_texture_old)
-        release_texture(current_texture_old)
+        # release_texture(image_texture_old)
+        # release_texture(current_texture_old)
 
         self.wnd.title = "ModernSlideShower: " + image_path
         self.reset_pic_position()
@@ -611,9 +623,8 @@ class ModernSlideShower(mglw.WindowConfig):
         while True:
             self.new_image_index = (self.new_image_index + increment) % self.image_count
             if start_number == self.new_image_index:
-                # todo good message here
-                print("No valid images found. Exiting.")
-                self.wnd.close()
+                self.image_list.insert(self.image_index, self.empty_image_list)
+                self.central_message_showing = 3
                 break
             if os.path.isfile(self.image_list[self.new_image_index]):
                 return
@@ -698,6 +709,13 @@ class ModernSlideShower(mglw.WindowConfig):
         if its_size != 0:
             self.pic_position_future += correction_vector / 10
 
+        if self.show_amount < 1:
+            self.show_amount = self.show_amount * .95 + .05
+            if self.show_amount > .999:
+                self.show_amount = 1
+                self.release_texture(self.image_texture_old)
+                self.release_texture(self.current_texture_old)
+
         self.pic_position_future += self.pic_position_speed
         self.pic_position_speed *= .95
         distance_to_ghost = np.log(1 + np.linalg.norm(self.pic_position - self.pic_position_future))
@@ -721,8 +739,9 @@ class ModernSlideShower(mglw.WindowConfig):
         self.pic_angle = self.pic_angle * (1 - .2) + self.pic_angle_future * .2
 
         self.update_position()
+        # print(scale_disproportion)
 
-        if sp_sum + scale_disproportion * 5 + rotation_disproportion < .1:
+        if sp_sum + scale_disproportion * 15 + rotation_disproportion < .1:
             self.run_move_image_inertial = False
 
     def move_image(self, d_coord=(0., 0.)):
@@ -822,12 +841,14 @@ class ModernSlideShower(mglw.WindowConfig):
     def reset_pic_position(self):
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
-        self.pic_zoom = self.pic_zoom_future
+        self.pic_zoom = self.pic_zoom_future * .98
         self.pic_position = np.array([0., 0.])
         self.pic_position_future = np.array([0., 0.])
         self.pic_position_speed = np.array([0., 0.])
         self.pic_angle = 0.
         self.pic_angle_future = 0.
+        self.show_amount = 0.
+        self.run_move_image_inertial = True
 
         self.update_position()
 
@@ -851,7 +872,7 @@ class ModernSlideShower(mglw.WindowConfig):
         # self.mouse_move_cumulative *= .99
         self.run_reduce_flipping_speed = - .15
         if abs(self.mouse_move_cumulative) > 100:
-            self.mouse_move_cumulative *= .05
+            # self.mouse_move_cumulative *= .05
             self.run_flip_once = 1 if self.mouse_move_cumulative > 0 else -1
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
@@ -880,12 +901,15 @@ class ModernSlideShower(mglw.WindowConfig):
             self.mouse_move_cumulative *= .999
         self.run_reduce_flipping_speed = - .15
         if abs(self.mouse_move_cumulative) > 100:
-            self.mouse_move_cumulative *= .05
+            # self.mouse_move_cumulative *= .05
             self.run_flip_once = 1 if self.mouse_move_cumulative > 0 else -1
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
-    def flip_once(self, forward):
-        if forward == 1:
+    def flip_once(self):
+        if self.autoflip_speed:
+            self.mouse_move_cumulative *= .05
+
+        if self.run_flip_once == 1:
             self.next_image()
         else:
             self.previous_image()
@@ -910,6 +934,18 @@ class ModernSlideShower(mglw.WindowConfig):
             self.autoflip_speed = 0
             self.schedule_pop_message(11)
 
+    def update_position_second_program(self):
+        texture_size = self.current_texture.size
+        self.gl_program_second['pix_size'] = self.gl_program['pix_size'].value
+        self.gl_program_second['angle'] = self.gl_program['angle'].value
+        self.gl_program_second['zoom_scale'] = self.gl_program['zoom_scale'].value
+        self.gl_program_second['useCurves'] = self.gl_program['useCurves'].value
+        self.gl_program_second['count_histograms'] = self.gl_program['count_histograms'].value
+        self.gl_program_second['displacement'] = self.gl_program['displacement'] .value
+        self.gl_program_second['wnd_size'] = self.wnd.size
+        self.gl_program_second['show_amount'] = - 1
+
+
     def update_position(self):
         texture_size = self.current_texture.size
         self.gl_program['pix_size'] = texture_size
@@ -919,6 +955,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program['count_histograms'] = self.use_curves
         self.gl_program['displacement'] = tuple(self.pic_position)
         self.gl_program['wnd_size'] = self.wnd.size
+        self.gl_program['show_amount'] = self.show_amount
+        self.gl_program_second['show_amount'] = self.show_amount - 1
         self.gl_program_round['wnd_size'] = self.wnd.size
         self.gl_program_round['displacement'] = tuple(self.round_indicator_cener_pos)
         self.gl_program_round['round_size'] = self.round_indicator_radius
@@ -949,7 +987,6 @@ class ModernSlideShower(mglw.WindowConfig):
         else:
             new_value = self.levels_borders[self.levels_edit_band][edit_parameter] + amount
             self.levels_borders[self.levels_edit_band][edit_parameter] = self.restrict(new_value, 0, 1)
-        # print(self.levels_edit_band)
 
         self.generate_levels_texture(self.levels_edit_band)
         self.update_position()
@@ -981,11 +1018,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.schedule_pop_message(0)
 
     def mouse_scroll_event(self, x_offset, y_offset):
-        if y_offset > 0:
-            self.previous_image()
-        elif y_offset < 0:
-            self.next_image()
-        # self.imgui.mouse_scroll_event(x_offset, y_offset)
+        self.run_flip_once = 1 if y_offset < 0 else -1
 
     def mouse_press_event(self, x, y, button):
         # self.imgui.mouse_press_event(x, y, button)
@@ -1125,11 +1158,16 @@ class ModernSlideShower(mglw.WindowConfig):
         self.wnd.clear()
         self.read_and_clear_histo()
 
-        self.gl_program['angle'] = self.pic_angle
+        self.current_texture.use(5)
+        if self.show_amount < 1:
+            if type(self.image_texture_old) is moderngl.texture.Texture:
+                self.current_texture_old.use(5)
+            self.picture_vertices.render(self.gl_program_second)
+        # self.gl_program['angle'] = self.pic_angle
+        self.current_texture.use(5)
         self.picture_vertices.render(self.gl_program)
 
-        # self.gl_program['angle'] = 0
-        # self.picture_vertices.render(self.gl_program)
+        # self.gl_program_second['angle'] = 0
 
         self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
         self.round_vao.render(self.gl_program_round)
@@ -1140,7 +1178,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if not (self.run_reduce_flipping_speed == 0):
             self.reduce_flipping_speed(time)
         if not (self.run_flip_once == 0):
-            self.flip_once(self.run_flip_once)
+            self.flip_once()
         if not (self.run_key_flipping == 0):
             self.key_flipping(time)
         if self.pop_message_type > 0:
