@@ -21,9 +21,10 @@ out float show_amount_global2;
 
 void main() {
 
-    float M_PI = 3.14159265358;
-    float pi_angle = angle * M_PI / 180;
-    mat2 rotate_mat = mat2(cos(pi_angle), - sin(pi_angle), sin(pi_angle), cos(pi_angle));
+//    float M_PI = 3.14159265358;
+//    float pi_angle = angle * M_PI / 180;
+//    mat2 rotate_mat = mat2(cos(pi_angle), - sin(pi_angle), sin(pi_angle), cos(pi_angle));
+    mat2 rotate_mat = mat2(cos(angle), - sin(angle), sin(angle), cos(angle));
     mat2 pix_size_mat = mat2(pix_size.x, 0, 0, pix_size.y);
     mat2 wnd_size_mat = mat2(1 / wnd_size.x, 0, 0, 1 / wnd_size.y);
     gl_Position = vec4((in_position * pix_size_mat * rotate_mat + displacement) * zoom_scale * wnd_size_mat, 0, 1);
@@ -33,10 +34,10 @@ void main() {
 //    show_frag = clamp(abs(show_amount) * 8 + in_position.y * (sign(show_amount) + 1) - 1, -1, 2);
 //    show_frag = abs(show_amount) * 8 + in_position.y * (sign(show_amount) + 1) - 4.5;
 //    show_frag = clamp(abs(show_amount) * 8 + in_position.y * (sign(show_amount) + 1) - 4.5, 0., 1.2);
-    show_frag = smoothstep(0, 4, abs(show_amount * (1.5 - sign(show_amount) / 2)) * 8 + (in_position.y - 1.5) * (sign(show_amount) + 1));
+//    show_frag = smoothstep(0, 4, abs(show_amount * (1.5 - sign(show_amount) / 2)) * 8 + (in_position.y - 1.5) * (sign(show_amount) + 1));
 
-    show_frag = (in_position.y - 1 + show_amount * 4) * step(0, show_amount);
-    show_frag += smoothstep(0, .1, -show_amount);
+    show_frag = (in_position.y - 1 + show_amount * 5) * step(0, show_amount);
+    show_frag += smoothstep(0, .03, -show_amount);
     show_amount_global = (1 - pow(show_amount, 2)) * step(0, show_amount);
     show_amount_global2 = (1 - smoothstep(0.99, 1, show_amount)) * step(0, show_amount);
 //    show_amount_global = (show_amount) * step(0, show_amount);
@@ -97,12 +98,13 @@ void main() {
 
     float closeness_to_edge = length(uv0 - vec2(.5));
     float edge_width = 50;
-    closeness_to_edge = 1 / (uv0.x + .001) + 1 / (uv0.y + .001) + 1 / (1.001 - uv0.x) + 1 / (1.001 - uv0.y);
-    closeness_to_edge = clamp(closeness_to_edge * 1 * show_amount_global * .01, 0, 1);
+    closeness_to_edge = 10 / (.001 + uv0.x) + 10 / (1.001 - uv0.x) + 1 / (.001 + uv0.y)  + 1/ (1.001 - uv0.y);
+    closeness_to_edge = clamp(closeness_to_edge * show_amount_global * .01, 0, 1) * clamp(closeness_to_edge * show_amount_global * .1, 0, 1) * .5 + .5 * clamp(closeness_to_edge * show_amount_global * .2, 0, 1) ;
+//    closeness_to_edge += clamp(closeness_to_edge * show_amount_global * .1, 0, 1) * .5;
 //    closeness_to_edge = smoothstep(0, .1, show_amount_frag) * smoothstep(0, .5, closeness_to_edge) * smoothstep(0, .8, closeness_to_edge);
     //    closeness_to_edge = smoothstep(0, .2, closeness_to_edge) * show_amount_frag;
     //    closeness_to_edge = clamp(smoothstep(0., .1, closeness_to_edge) + smoothstep(0., .8, closeness_to_edge), 0., 1.);
-    fragColor = vec4(tempColor.rgb, show_frag * (1 - closeness_to_edge * show_amount_global2 * 1));
+    fragColor = vec4(tempColor.rgb, show_frag * (1 - closeness_to_edge * show_amount_global2));
 //    fragColor = vec4(tempColor.rgb, show_frag );
 }
 

@@ -19,15 +19,12 @@ import random
 # from scipy.interpolate import BSpline
 
 
-#    todo: smooth image change
-#    todo: autoflip mode: repeat flipping with a speed shown by the user
-#    todo: save rotation when saving edited image
+#    todo: make icon for program
 #    todo: shortcuts written everywhere
 #    todo: all operations supported by messages
 #    todo: lossless jpeg image cropping
-#    todo: filelist position indicator
 #    todo: lossy image cropping in full edit mode
-#    todo: doubleclick event
+#    todo: filelist position indicator
 #    todo: keyboard navigation on picture
 #    todo: show short image info
 #    todo: show full image info
@@ -36,6 +33,9 @@ import random
 #    todo: different color curves
 
 
+#    +todo: save 90°-rotation when saving edited image
+#    +todo: autoflip mode
+#    +todo: smooth image change
 #    +todo: random image jump from mouse
 #    +todo: self.pressed_mouse must support middle button with other buttons
 #    +todo: show friendly message in case no images are found
@@ -557,7 +557,7 @@ class ModernSlideShower(mglw.WindowConfig):
     def generate_dummy_image(self):
         bands = []
         for band in range(3):
-            bands.append(Image.effect_mandelbrot((1920, 1670), (-1.8, -1, .5, 1), 30 + band * 10))
+            bands.append(Image.effect_mandelbrot((1920, 1080), (-1.784, -0.000196, -1.7833, 0.000196), 350 - band * 50))
         dummy_image = Image.merge("RGB", bands)
         return dummy_image
 
@@ -590,6 +590,8 @@ class ModernSlideShower(mglw.WindowConfig):
                 image_bytes = self.im_object.tobytes()
             else:
                 print("Error reading ", self.image_list[self.new_image_index], e)
+                self.find_next_existing_image()
+                self.load_image()
                 return
 
         self.image_texture = self.ctx.texture((self.im_object.width, self.im_object.height), 3, image_bytes)
@@ -597,12 +599,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.image_texture.repeat_y = False
         self.image_texture.build_mipmaps()
         self.image_texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
-        # self.image_texture.use(5)
         self.current_texture = self.image_texture
         self.image_index = self.new_image_index
-
-        # release_texture(image_texture_old)
-        # release_texture(current_texture_old)
 
         self.wnd.title = "ModernSlideShower: " + image_path
         self.reset_pic_position()
@@ -663,8 +661,6 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.pic_angle_future % 360 and self.jpegtran_exe:
             rotate_command = self.jpegtran_exe + self.jpegtran_options.format(round(360 - self.pic_angle_future % 360),
                                                                               self.image_list[self.image_index])
-            # print(rotate_command)
-
             os.system(rotate_command)
 
             self.load_image()
@@ -711,7 +707,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.pic_position_future += correction_vector / 10
 
         if self.show_amount < 1:
-            transition_speed = .08
+            transition_speed = .15
             self.show_amount = transition_speed + self.show_amount * (1 - transition_speed)
             if self.show_amount > .9999:
                 self.show_amount = 1
@@ -816,6 +812,11 @@ class ModernSlideShower(mglw.WindowConfig):
     def save_current_texture(self, replace):
         texture_data = self.current_texture.read()
         new_image = Image.frombuffer("RGB", self.current_texture.size, texture_data)
+        if self.pic_angle_future % 360:  # not at original angle
+            if not (self.pic_angle_future % 90):  # but at 90°-ish
+                rotation_step = (self.pic_angle_future % 360) // 90 + 1
+                new_image = new_image.transpose(rotation_step)
+
         new_file_name = self.image_list[self.image_index]
         if not replace:
             stripped_file_name = os.path.splitext(new_file_name)[0]
@@ -837,7 +838,7 @@ class ModernSlideShower(mglw.WindowConfig):
     def reset_pic_position(self):
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
-        self.pic_zoom = self.pic_zoom_future * .98
+        self.pic_zoom = self.pic_zoom_future * .97
         self.pic_position = np.array([0., 0.])
         self.pic_position_future = np.array([0., 0.])
         self.pic_position_speed = np.array([0., 0.])
@@ -928,7 +929,6 @@ class ModernSlideShower(mglw.WindowConfig):
             self.schedule_pop_message(11)
 
     def update_position_second_program(self):
-        texture_size = self.current_texture.size
         self.gl_program_second['pix_size'] = self.gl_program['pix_size'].value
         self.gl_program_second['angle'] = self.gl_program['angle'].value
         self.gl_program_second['zoom_scale'] = self.gl_program['zoom_scale'].value
@@ -942,7 +942,7 @@ class ModernSlideShower(mglw.WindowConfig):
     def update_position(self):
         texture_size = self.current_texture.size
         self.gl_program['pix_size'] = texture_size
-        self.gl_program['angle'] = self.pic_angle
+        self.gl_program['angle'] = math.radians(self.pic_angle)
         self.gl_program['zoom_scale'] = self.pic_zoom
         self.gl_program['useCurves'] = self.use_curves and self.levels_enabled
         self.gl_program['count_histograms'] = self.use_curves
@@ -1156,11 +1156,10 @@ class ModernSlideShower(mglw.WindowConfig):
             if type(self.image_texture_old) is moderngl.texture.Texture:
                 self.current_texture_old.use(5)
             self.picture_vertices.render(self.gl_program_second)
+
         # self.gl_program['angle'] = self.pic_angle
         self.current_texture.use(5)
         self.picture_vertices.render(self.gl_program)
-
-        # self.gl_program_second['angle'] = 0
 
         self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
         self.round_vao.render(self.gl_program_round)
