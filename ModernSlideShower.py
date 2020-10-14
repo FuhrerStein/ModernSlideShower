@@ -753,11 +753,7 @@ class ModernSlideShower(mglw.WindowConfig):
     def key_flipping(self, time):
         if self.key_flipping_next_time > time:
             return
-        if self.run_key_flipping > 0:
-            self.next_image()
-        else:
-            self.previous_image()
-
+        self.run_flip_once = 1 if self.run_key_flipping > 0 else -1
         self.key_flipping_next_time = time + .4 / abs(self.run_key_flipping)
 
     def first_directory_image(self, direction=0):
@@ -765,8 +761,6 @@ class ModernSlideShower(mglw.WindowConfig):
         previous_pix_dir = current_pix_dir
         previous_image_index = self.new_image_index
         increment = 1 if direction == 1 else -1
-        # if direction == 1:
-        #     increment = 1
         while previous_pix_dir == current_pix_dir:
             self.new_image_index = previous_image_index
             if (self.new_image_index + direction) % self.image_count == 0:
@@ -869,10 +863,8 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def do_auto_flip(self):
         self.mouse_move_cumulative += self.autoflip_speed
-        # self.mouse_move_cumulative *= .99
         self.run_reduce_flipping_speed = - .15
         if abs(self.mouse_move_cumulative) > 100:
-            # self.mouse_move_cumulative *= .05
             self.run_flip_once = 1 if self.mouse_move_cumulative > 0 else -1
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
@@ -906,8 +898,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
     def flip_once(self):
-        if self.autoflip_speed:
-            self.mouse_move_cumulative *= .05
+        self.mouse_move_cumulative *= .05
 
         if self.run_flip_once == 1:
             self.next_image()
