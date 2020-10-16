@@ -3,18 +3,33 @@ Image viewer with smooth image mothion and easy navigation
 
 
 ## Description
-Coming soon, stay tuned!
+ModernSlideShower is an image viewer aimed at ease of use and good visual quality.
+Key features:
+* **Unique fullscreen interface** In fullscreen mouse cursor is never shown. All navigation is done without seeing mouse cursor.
+* **Support for big image sets.** Perfectly workable with lists of millions af images.
+* **Easy mouse navigation.** You can smoothly zoom, pan, switch images with only left and right mouse buttons. Mouse wheel can also be used for switching images.
+* **Rich image switching arsenal.** 
+  * Previous/next image.
+  * First image in current folder
+  * First image in previous/next folder
+  * Random image in the whole list
+* **Automatic image swithing** where you can change switching speed on the run.
+* **Image rotation.** Option to rotate by 90° angles, as well as by arbitrary angles.
+* **Lossless jpeg rotation.** Using free third-party utility [jpegtran](https://sourceforge.net/projects/libjpeg-turbo/files/2.0.5/)
+
+
+
 
 
 ## Installation and requirements
-Download all project files and unpack them in a folder of your choice.
-
-Fist, you need to have Python installed on your system
+Install Python (~30 MB installer size)
 https://www.python.org/downloads/
 
-Second, some python modules need to be installed to run this program.
-To install those modules run:
+Download all project files and unpack them in a folder of your choice.
+
+Install required Python modules (~100 MB)
 ```
 pip install -r requirements.txt
 ```
-Once install finished, you can run program by launching ModernSlideShower.py
+Run program by launching ModernSlideShower.py
+
