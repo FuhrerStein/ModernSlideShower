@@ -14,7 +14,7 @@ Key features:
   * First image in previous/next folder
   * Random image in the whole list
 * **Automatic image swithing** where you can change switching speed on the run.
-* **Image rotation.** Option to rotate by 90° angles, as well as by arbitrary angles.
+* **Image rotation.** Option to rotate by 90° angles, as well as by arbitrary angle.
 * **Lossless jpeg rotation.** Using free third-party utility [jpegtran](https://sourceforge.net/projects/libjpeg-turbo/files/2.0.5/)
 
 
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 ```
 Run program by launching ModernSlideShower.py
 
-To open a folder (and all of its subfolders) with images, pass is as an argument:
+To open a folder (and all of its subfolders) with images, pass it as an argument:
 ```
 ModernSlideShower.py d:\Pics\Elephants
 ```
