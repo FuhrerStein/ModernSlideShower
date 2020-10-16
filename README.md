@@ -21,7 +21,7 @@ Key features:
 
 
 
-## Installation and requirements
+## Installation and usage
 Install Python (~30 MB installer size)
 https://www.python.org/downloads/
 
@@ -32,4 +32,7 @@ Install required Python modules (~100 MB)
 pip install -r requirements.txt
 ```
 Run program by launching ModernSlideShower.py
-
+To open a folder (and all of its subfolders) with images, pass is as an argument:
+```
+ModernSlideShower.py d:\Pics\Elephants
+```
