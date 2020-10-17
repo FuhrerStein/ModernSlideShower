@@ -5,7 +5,7 @@ Image viewer with smooth image mothion and easy navigation
 ## Description
 ModernSlideShower is an image viewer aimed at ease of use and good visual quality.
 Key features:
-* **Unique fullscreen interface** In fullscreen mouse cursor is never shown. All navigation is done without seeing mouse cursor.
+* **Unique fullscreen interface.** In fullscreen mouse cursor is never shown. All navigation is done without seeing mouse cursor.
 * **Support for big image sets.** Perfectly workable with lists of millions af images.
 * **Easy mouse navigation.** You can smoothly zoom, pan, switch images with only left and right mouse buttons. Mouse wheel can also be used for switching images.
 * **Rich image switching arsenal.** 
@@ -13,27 +13,32 @@ Key features:
   * First image in current folder
   * First image in previous/next folder
   * Random image in the whole list
-* **Automatic image swithing** where you can change switching speed on the run.
+* **Automatic image swithing (slideshow),** where you can change switching speed on the go.
 * **Image rotation.** Option to rotate by 90° angles, as well as by arbitrary angle.
 * **Lossless jpeg rotation.** Using free third-party utility [jpegtran](https://sourceforge.net/projects/libjpeg-turbo/files/2.0.5/)
 
 
 
-
-
 ## Installation and usage
-Install Python (~30 MB installer size)
+* Install Python (~30 MB installer size)
 https://www.python.org/downloads/
 
-Download all project files and unpack them in a folder of your choice.
+* Download all project files and unpack them in a folder of your choice.
 
-Install required Python modules (~100 MB)
+* Install required Python modules (~100 MB). 
 ```
 pip install -r requirements.txt
 ```
-Run program by launching ModernSlideShower.py
+Or just double-click **install requirements.cmd** if you are using Windows.
+
+* Run program by launching ModernSlideShower.py
 
 To open a folder (and all of its subfolders) with images, pass it as an argument:
 ```
 ModernSlideShower.py d:\Pics\Elephants
 ```
+To run in windowed mode (rather than fullscreen, which is default, pass -f command line ardument:
+```
+ModernSlideShower.py d:\Pics\Elephants -f
+```
+
