@@ -28,13 +28,14 @@ import random
 #    todo: lossy image cropping in full edit mode
 #    todo: filelist position indicator
 #    todo: keyboard navigation on picture
-#    todo: show short image info
 #    todo: show full image info
 #    todo: explain about jpegtan in case it was not found
 #    todo: interface to adjust curves
 #    todo: different color curves
 #    todo: zooming slideshow mode
+#    todo: filtering image with glsl code
 
+#    +todo: show short image info
 #    +todo: navigate through levels interface with only mouse
 #    +todo: navigate through settings by mouse
 #    +todo: adjustable between-image transition
@@ -65,7 +66,6 @@ import random
 #    +todo: keep image in visible area
 #    +todo: mouse flip indicator
 #    +todo: inertial movement and zooming
-
 
 
 round_glsl = '''
@@ -203,6 +203,7 @@ void main() {
 #endif
 '''
 
+
 class ModernSlideShower(mglw.WindowConfig):
     gl_version = (4, 3)
     title = "imgui Integration"
@@ -279,7 +280,7 @@ class ModernSlideShower(mglw.WindowConfig):
                         "Image list start",
                         "Next folder",
                         "Autoflipping ON",
-                        "Autoflipping OFF",]
+                        "Autoflipping OFF", ]
     pop_message_deadline = 0.
 
     histogram_array = np.empty
@@ -300,6 +301,9 @@ class ModernSlideShower(mglw.WindowConfig):
     empty_image_list = "Empty.jpg"
 
     virtual_cursor_position = np.array([0., 0.])
+
+    show_image_info = 0
+    current_image_file_size = 0
 
     central_message_showing = False
     central_message = ["",
@@ -331,7 +335,7 @@ class ModernSlideShower(mglw.WindowConfig):
     No valid images found. Maybe all images were moved or deleted.     
     Press H or F1 to close this window and to show help message.                
     '''
-    ]
+                       ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -582,7 +586,6 @@ class ModernSlideShower(mglw.WindowConfig):
                 pass
 
     def load_image(self):
-
         if not os.path.isfile(self.image_list[self.new_image_index]):
             if self.image_list[self.new_image_index] != self.empty_image_list:
                 self.find_next_existing_image()
@@ -596,6 +599,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 else:
                     self.im_object = self.reorient_image(img_buffer).convert(mode="RGB")
                 image_bytes = self.im_object.tobytes()
+                self.current_image_file_size = os.stat(image_path).st_size
         except Exception as e:
             if self.image_list[self.new_image_index] == self.empty_image_list:
                 if type(self.im_object) is not Image.Image:
@@ -617,8 +621,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.wnd.title = "ModernSlideShower: " + image_path
         self.reset_pic_position()
-        if self.pop_message_type == 3:
-            self.schedule_pop_message(0)
         if self.last_image_folder is not None:
             if os.path.dirname(self.image_list[self.image_index]) != self.last_image_folder:
                 self.schedule_pop_message(9)
@@ -722,7 +724,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.transition_stage < 1:
             transition_step = self.transition_speed * (1.2 - self.transition_stage)
             self.transition_stage += transition_step / (1 - abs(self.mouse_move_cumulative) / 100)
-            print(self.transition_stage)
+            # print(self.transition_stage)
             if self.transition_stage > .99999:
                 self.transition_stage = 1
                 self.release_texture(self.image_texture_old)
@@ -737,7 +739,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.pic_position = self.pic_position * (1 - sp_sum2) + self.pic_position_future * sp_sum2
 
         scale_disproportion = abs(self.pic_zoom_future / self.pic_zoom - 1) ** .7 * .2
-        pic_zoom_new = self.pic_zoom * (1 - scale_disproportion * self.transition_stage ** 2) + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
+        pic_zoom_new = self.pic_zoom * (
+                    1 - scale_disproportion * self.transition_stage ** 2) + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
         if pic_zoom_new / self.pic_zoom < 1:
             centerting_factor = 1 - scale_disproportion / self.pic_zoom / 100
             self.pic_position_future = self.pic_position_future * centerting_factor
@@ -851,6 +854,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.update_position()
 
     def reset_pic_position(self):
+        if self.pop_message_type == 3:
+            self.schedule_pop_message(0)
         self.program_id = 1 - self.program_id
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
@@ -919,7 +924,8 @@ class ModernSlideShower(mglw.WindowConfig):
 
         if self.mouse_move_atangent_delta * self.mouse_move_cumulative > 0:
             self.mouse_unflipping_speed = .5
-        mouse_move_delta = self.mouse_move_atangent_delta * (4 - math.copysign(2, self.mouse_move_atangent_delta * self.mouse_move_cumulative)) * mouse_speed
+        mouse_move_delta = self.mouse_move_atangent_delta * (
+                    4 - math.copysign(2, self.mouse_move_atangent_delta * self.mouse_move_cumulative)) * mouse_speed
 
         if self.autoflip_speed != 0:
             self.autoflip_speed += mouse_move_delta * .01
@@ -1091,6 +1097,8 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.run_key_flipping = -1
                 elif key == self.wnd.keys.L:
                     self.show_curves_interface()
+                elif key == self.wnd.keys.I:
+                    self.show_image_info = (self.show_image_info + 1) % 2
                 elif key == self.wnd.keys.C:
                     self.move_file_out(do_copy=True)
                 elif key == self.wnd.keys.M:
@@ -1169,6 +1177,19 @@ class ModernSlideShower(mglw.WindowConfig):
         self.histo_texture.write(self.histo_texture_empty)
 
     def render(self, time: float, frame_time: float):
+        if self.run_move_image_inertial:
+            self.move_image_inertial(time)
+        if not (self.run_reduce_flipping_speed == 0):
+            self.reduce_flipping_speed(time)
+        if not (self.run_flip_once == 0):
+            self.flip_once()
+        if not (self.run_key_flipping == 0):
+            self.key_flipping(time)
+        if self.pop_message_type > 0:
+            self.pop_message_dispatcher(time)
+        if self.autoflip_speed != 0 and self.pressed_mouse == 0:
+            self.do_auto_flip()
+
         self.wnd.clear()
         self.read_and_clear_histo()
 
@@ -1184,18 +1205,18 @@ class ModernSlideShower(mglw.WindowConfig):
         self.round_vao.render(self.gl_program_round)
         self.render_ui(time)
 
-        if self.run_move_image_inertial:
-            self.move_image_inertial(time)
-        if not (self.run_reduce_flipping_speed == 0):
-            self.reduce_flipping_speed(time)
-        if not (self.run_flip_once == 0):
-            self.flip_once()
-        if not (self.run_key_flipping == 0):
-            self.key_flipping(time)
-        if self.pop_message_type > 0:
-            self.pop_message_dispatcher(time)
-        if self.autoflip_speed != 0 and self.pressed_mouse == 0:
-            self.do_auto_flip()
+
+    def format_bytes(self, size):
+        # 2**10 = 1024
+        power = 2 ** 10
+        n = 0
+        power_labels = {0: 'B', 1: ' KB', 2: ' MB', 3: ' GB', 4: ' TB'}
+        f_size = size
+        while f_size > power * 10:
+            f_size /= power
+            n += 1
+        ret = f'{f_size:,.0f}'.replace(",", " ") + power_labels[n] + "  (" + f'{size:,d}'.replace(",", " ") + " B)"
+        return ret
 
     def render_ui(self, time):
         # io = imgui.get_io()
@@ -1224,9 +1245,10 @@ class ModernSlideShower(mglw.WindowConfig):
 
         style.alpha = 1
         line_height = imgui.get_text_line_height_with_spacing()
-        im_gui_window_flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_MOVE
+        # im_gui_window_flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_MOVE
         in_cenral_wnd_flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | \
                               imgui.WINDOW_NO_INPUTS | imgui.WINDOW_NO_COLLAPSE
+        im_gui_window_flags = in_cenral_wnd_flags | imgui.WINDOW_NO_TITLE_BAR
 
         # Settings window
         if self.settings_parameter:
@@ -1241,7 +1263,6 @@ class ModernSlideShower(mglw.WindowConfig):
             imgui.slider_float("Hide image borders", self.hide_borders, 0, 1, '%.3f', 2)
             imgui.pop_style_color(3)
             imgui.end()
-
 
         # Levels window
         if self.levels_open:
@@ -1335,9 +1356,34 @@ class ModernSlideShower(mglw.WindowConfig):
                 imgui.text(text)
             imgui.end()
 
+        next_message_top = 10
+        if self.show_image_info > 0:
+            style.alpha = .7
+
+            def show_info_window(message_top, text_list, win_name):
+                imgui.set_next_window_position(10, message_top, 1, pivot_x=0, pivot_y=0)
+                imgui.begin(win_name, True, im_gui_window_flags)
+                for text in text_list:
+                    imgui.text(text)
+                message_top += imgui.get_window_height()
+                imgui.end()
+                return message_top
+
+            if self.show_image_info == 1:
+                info_text = ["Folder: " + os.path.dirname(self.image_list[self.image_index])]
+                next_message_top = show_info_window(next_message_top, info_text, "Directory")
+
+                im_mp = self.im_object.width * self.im_object.height / 1000000
+                info_text = ["File name: " + os.path.basename(self.image_list[self.image_index]),
+                             "File size: " + self.format_bytes(self.current_image_file_size),
+                             "Image size: " + f"{self.im_object.width} x {self.im_object.height}",
+                             "Image size: " + f"{im_mp:.2f} megapixels",
+                             "Image #: " + f"{self.image_index:d} of {self.image_count:d}"]
+                next_message_top = show_info_window(next_message_top, info_text, "File props")
+
         if self.pop_message_type > 0:
             style.alpha = np.clip(self.pop_message_deadline - time, 0, 1.)
-            imgui.set_next_window_position(30, 30)
+            imgui.set_next_window_position(30, next_message_top)
 
             imgui.begin("C" * len(self.pop_message_text[self.pop_message_type - 1]), True, im_gui_window_flags)
             imgui.set_window_font_scale(2)
@@ -1368,11 +1414,9 @@ def main_loop() -> None:
     timer.start()
 
     while not window.is_closing:
-        window.swap_buffers()
         current_time, delta = timer.next_frame()
         window.render(current_time, delta)
-        # if not window.is_closing:
-        #     window.swap_buffers()
+        window.swap_buffers()
 
     _, duration = timer.stop()
     window.destroy()
