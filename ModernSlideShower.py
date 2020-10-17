@@ -34,7 +34,10 @@ import random
 #    todo: different color curves
 #    todo: zooming slideshow mode
 #    todo: filtering image with glsl code
+#    todo: sticking settings on some keys, like enable/disable levels
 
+
+#    +todo: levels edit with left and right mouse
 #    +todo: show short image info
 #    +todo: navigate through levels interface with only mouse
 #    +todo: navigate through settings by mouse
@@ -295,6 +298,7 @@ class ModernSlideShower(mglw.WindowConfig):
     levels_enabled = True
     levels_edit_band = 0
     levels_edit_parameter = 0
+    levels_edit_group = 0
 
     transition_stage = 1.
 
@@ -902,8 +906,10 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.virtual_cursor_position *= 0
         elif self.levels_open:
             if abs(self.virtual_cursor_position[0]) > 100:
-                self.levels_edit_parameter += 1 if self.virtual_cursor_position[0] > 0 else -1
-                self.levels_edit_parameter = self.restrict(self.levels_edit_parameter, 0, 4)
+                self.levels_edit_group += 1 if self.virtual_cursor_position[0] > 0 else -1
+                self.levels_edit_group = self.restrict(self.levels_edit_group, 0, 2)
+                # self.levels_edit_parameter += 1 if self.virtual_cursor_position[0] > 0 else -1
+                # self.levels_edit_parameter = self.restrict(self.levels_edit_parameter, 0, 4)
                 self.virtual_cursor_position *= 0
             if abs(self.virtual_cursor_position[1]) > 150:
                 self.levels_edit_band += 1 if self.virtual_cursor_position[1] > 0 else -1
@@ -1002,18 +1008,18 @@ class ModernSlideShower(mglw.WindowConfig):
             self.hide_borders = self.restrict(self.hide_borders * (1 - amount) - amount / 1000, 0, 1)
             self.gl_program_pic[self.program_id]['hide_borders'] = self.hide_borders
         elif self.levels_open:
-            if self.pressed_mouse == 1:
-                edit_parameter = self.levels_edit_parameter
-                if edit_parameter > 2:
-                    amount = - amount
-                if edit_parameter == 0:
-                    self.levels_borders[self.levels_edit_band][edit_parameter] = self.restrict(
-                        self.levels_borders[self.levels_edit_band][edit_parameter] * (1 + amount), 0.01, 10)
-                else:
-                    new_value = self.levels_borders[self.levels_edit_band][edit_parameter] + amount
-                    self.levels_borders[self.levels_edit_band][edit_parameter] = self.restrict(new_value, 0, 1)
-                self.generate_levels_texture(self.levels_edit_band)
-                self.update_position()
+            # if self.pressed_mouse == 1:
+            edit_parameter = self.levels_edit_parameter - 1
+            if edit_parameter > 2:
+                amount = - amount
+            if edit_parameter == 0:
+                self.levels_borders[self.levels_edit_band][edit_parameter] = self.restrict(
+                    self.levels_borders[self.levels_edit_band][edit_parameter] * (1 + amount), 0.01, 10)
+            else:
+                new_value = self.levels_borders[self.levels_edit_band][edit_parameter] + amount
+                self.levels_borders[self.levels_edit_band][edit_parameter] = self.restrict(new_value, 0, 1)
+            self.generate_levels_texture(self.levels_edit_band)
+            self.update_position()
 
     def mouse_position_event(self, x, y, dx, dy):
         if self.settings_parameter or (self.levels_open and self.levels_enabled):
@@ -1055,6 +1061,14 @@ class ModernSlideShower(mglw.WindowConfig):
         self.pressed_mouse = self.pressed_mouse | button_code
         if self.pressed_mouse == 4:
             self.wnd.close()
+            return
+
+        if self.levels_open and self.levels_enabled:
+            if button < 3:
+                self.levels_edit_parameter = self.levels_edit_group * 2 + button - 1
+                if self.levels_edit_parameter == 0:
+                    self.levels_edit_parameter = 1
+
         if self.pressed_mouse == 5:
             self.random_image()
         if self.pressed_mouse == 6:
@@ -1064,6 +1078,8 @@ class ModernSlideShower(mglw.WindowConfig):
         # self.imgui.mouse_release_event(x, y, button)
         button_code = 4 if button == 3 else button
         self.pressed_mouse = self.pressed_mouse & ~button_code
+        if self.levels_edit_parameter > 0:
+            self.levels_edit_parameter = 0
 
     def unicode_char_entered(self, char):
         pass
@@ -1294,20 +1310,24 @@ class ModernSlideShower(mglw.WindowConfig):
 
             style.alpha = .2 + .6 * self.levels_enabled
 
-            def add_cells_with_text(texts):
-                for text in texts:
+            def add_cells_with_text(texts, list_of_selected):
+                for n, text in enumerate(texts):
+                    letters_blue = .5 if n in list_of_selected else 1
+                    imgui.push_style_color(imgui.STYLE_ALPHA, 1, 1, letters_blue)
                     imgui.text(text)
+                    imgui.pop_style_color()
                     imgui.next_column()
 
             imgui.columns(3)
-            add_cells_with_text(["    Gamma", "   Input", "   Output"])
+            add_cells_with_text(["    Gamma", "   Input", "   Output"], [self.levels_edit_group])
 
             imgui.columns(6)
-            add_cells_with_text(["", "", " min", " max", " min", " max"])
+            add_cells_with_text(["", "", " min", " max", " min", " max"], [self.levels_edit_group * 2,
+                                                                           self.levels_edit_group * 2 + 1])
 
             def add_grid_elements(row_name, row_number):
                 # active_column = self.mouse_direct_edit + self.pressed_mouse - 1
-                active_column = self.levels_edit_parameter
+                active_columns = [self.levels_edit_group * 2 - 1, self.levels_edit_group * 2]
                 # if (self.mouse_direct_edit == 3 and self.pressed_mouse == 0) or self.mouse_direct_edit == 0:
                 #     active_column = - 1
                 # bg_color = (.2, .2, .2)
@@ -1318,10 +1338,10 @@ class ModernSlideShower(mglw.WindowConfig):
                 imgui.text(row_name)
                 imgui.next_column()
                 for column in range(5):
-                    if column == active_column and self.levels_edit_band == row_number:
+                    if column == self.levels_edit_parameter - 1 and self.levels_edit_band == row_number:
                         bg_color = (.7, .2, .2)
-                    elif column == active_column or self.levels_edit_band == row_number:
-                        bg_color = (.5, .3, .3)
+                    elif column in active_columns or self.levels_edit_band == row_number:
+                        bg_color = (.2, .2, .6)
                     else:
                         bg_color = (.2, .2, .2)
                     imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, bg_color[0], bg_color[1], bg_color[2])
