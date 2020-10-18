@@ -18,7 +18,6 @@ import random
 
 # from scipy.interpolate import BSpline
 
-
 #    todo: save settings to file
 #    todo: dialog to edit settings
 #    todo: program icon
@@ -37,39 +36,39 @@ import random
 #    todo: sticking settings on some keys, like enable/disable levels
 
 
-#    +todo: replace simple pop messages with full-fledged messages queue
-#    +todo: levels edit with left and right mouse
-#    +todo: show short image info
-#    +todo: navigate through levels interface with only mouse
-#    +todo: navigate through settings by mouse
-#    +todo: adjustable between-image transition
-#    +todo: do not regenerate empty image if it is already there
-#    +todo: nice empty image
-#    +todo: save 90°-rotation when saving edited image
-#    +todo: autoflip mode
-#    +todo: smooth image change
-#    +todo: random image jump from mouse
-#    +todo: self.pressed_mouse must support middle button with other buttons
-#    +todo: show friendly message in case no images are found
-#    +todo: start with random image if playlist had _r in its name
-#    +todo: pleasant image centering
-#    +todo: show message when changing folder
-#    +todo: simple slidelist compression to reduce file size.
-#    +todo: make image sharpest possible using right mipmap texture
-#    +todo: show message when ending list
-#    +todo: update histograms on the fly
-#    +todo: save edited image
-#    +todo: interface to adjust levels
-#    +todo: different color levels
-#    +todo: mouse action for left+right drag
-#    +todo: help message on F1 or H
-#    +todo: free image rotation
-#    +todo: rotate indicator
-#    +todo: copy/move indicator
-#    +todo: work with broken and gray jpegs
-#    +todo: keep image in visible area
-#    +todo: mouse flip indicator
-#    +todo: inertial movement and zooming
+#    todo+: replace simple pop messages with full-fledged messages queue
+#    todo+: levels edit with left and right mouse
+#    todo+: show short image info
+#    todo+: navigate through levels interface with only mouse
+#    todo+: navigate through settings by mouse
+#    todo+: adjustable between-image transition
+#    todo+: do not regenerate empty image if it is already there
+#    todo+: nice empty image
+#    todo+: save 90°-rotation when saving edited image
+#    todo+: autoflip mode
+#    todo+: smooth image change
+#    todo+: random image jump from mouse
+#    todo+: self.pressed_mouse must support middle button with other buttons
+#    todo+: show friendly message in case no images are found
+#    todo+: start with random image if playlist had _r in its name
+#    todo+: pleasant image centering
+#    todo+: show message when changing folder
+#    todo+: simple slidelist compression to reduce file size.
+#    todo+: make image sharpest possible using right mipmap texture
+#    todo+: show message when ending list
+#    todo+: update histograms on the fly
+#    todo+: save edited image
+#    todo+: interface to adjust levels
+#    todo+: different color levels
+#    todo+: mouse action for left+right drag
+#    todo+: help message on F1 or H
+#    todo+: free image rotation
+#    todo+: rotate indicator
+#    todo+: copy/move indicator
+#    todo+: work with broken and gray jpegs
+#    todo+: keep image in visible area
+#    todo+: mouse flip indicator
+#    todo+: inertial movement and zooming
 
 
 round_glsl = '''
@@ -394,7 +393,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.random_image()
         else:
             self.load_image()
-            # self.schedule_pop_message(0)
+            self.schedule_pop_message(8, True)
         self.current_texture.use(5)
         self.transition_stage = 1
 
@@ -450,8 +449,8 @@ class ModernSlideShower(mglw.WindowConfig):
         dir_arguments = []
         if len(sys.argv) > 1:
             for argument in sys.argv[1:]:
-                if os.path.isdir(argument):
-                    dir_arguments.append(os.path.abspath(argument))
+                if os.path.isdir(argument.rstrip('"')):
+                    dir_arguments.append(os.path.abspath(argument.rstrip('"')))
                 if os.path.isfile(argument):
                     file_arguments.append(os.path.abspath(argument))
 
@@ -632,8 +631,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if os.path.dirname(self.image_list[self.image_index]) != self.last_image_folder:
                 self.schedule_pop_message(9)
             self.last_image_folder = None
-        if self.image_index == 0:
-            self.schedule_pop_message(8)
+        self.schedule_pop_message(8, self.image_index != 0)
 
     def find_next_existing_image(self):
         start_number = self.new_image_index
@@ -652,9 +650,12 @@ class ModernSlideShower(mglw.WindowConfig):
     def move_file_out(self, do_copy=False):
         parent_folder = os.path.dirname(self.image_list[self.image_index])
         own_subfolder = parent_folder[len(self.common_path):]
-        new_folder = self.common_path + ["\\--", "\\++"][do_copy] + own_subfolder
+        prefix_subfolder = ["--", "++"][do_copy]
+        if not own_subfolder.startswith("\\"):
+            own_subfolder = "\\" + own_subfolder
+        new_folder = os.path.join(self.common_path, prefix_subfolder) + own_subfolder
         file_operation = [shutil.move, shutil.copy][do_copy]
-
+        # os.path.join()
         if not os.path.isdir(new_folder):
             try:
                 os.makedirs(new_folder)
@@ -879,7 +880,6 @@ class ModernSlideShower(mglw.WindowConfig):
         self.update_position()
 
     def schedule_pop_message(self, pop_id, remove=False, duration=4.):
-        self.pop_message_type = pop_id
         for item in self.pop_db:
             if pop_id == item['type']:
                 self.pop_db.remove(item)
@@ -890,7 +890,6 @@ class ModernSlideShower(mglw.WindowConfig):
         if pop_id == 3:
             duration = 8000000
             message_text = message_text.format(360 - self.pic_angle_future % 360)
-        # if pop_id ==
 
         new_line = dict.fromkeys(['text', 'alpha', 'type', 'duration', 'start', 'end'], 0.)
         new_line['text'] = message_text
@@ -1438,10 +1437,10 @@ class ModernSlideShower(mglw.WindowConfig):
             for item in self.pop_db:
                 style.alpha = item['alpha'] * .8
                 imgui.set_next_window_position(10, next_message_top)
-                imgui.begin(str(item['start']), True, im_gui_window_flags)
+                imgui.begin(str(item['type']), True, im_gui_window_flags)
                 imgui.set_window_font_scale(1.2)
                 imgui.text(item['text'])
-                next_message_top += imgui.get_window_height()
+                next_message_top += imgui.get_window_height() * max(item['alpha'] ** .3, item['alpha'])
                 imgui.end()
 
         imgui.render()
