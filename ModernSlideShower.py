@@ -22,8 +22,8 @@ import random
 #    todo: save settings to file
 #    todo: dialog to edit settings
 #    todo: program icon
-#    todo: shortcuts everywhere
-#    todo: all operations supported by messages
+#    todo: shortcuts everywhere <- rewrite this to be more specific
+#    todo: all operations supported by messages <- rewrite this to be more specific
 #    todo: lossless jpeg image cropping
 #    todo: lossy image cropping in full edit mode
 #    todo: filelist position indicator
@@ -37,6 +37,7 @@ import random
 #    todo: sticking settings on some keys, like enable/disable levels
 
 
+#    +todo: replace simple pop messages with full-fledged messages queue
 #    +todo: levels edit with left and right mouse
 #    +todo: show short image info
 #    +todo: navigate through levels interface with only mouse
@@ -271,20 +272,22 @@ class ModernSlideShower(mglw.WindowConfig):
     run_flip_once = 0
     pressed_mouse = 0
 
-    pop_message_timeout = 3.
-    pop_message_type = 0
+    # pop_message_timeout = 3.
+    # pop_message_type = 0
     pop_message_text = ["File moved",
                         "File copied",
-                        "Image rotated. \nPress Enter to save",
+                        "Image rotated by {} degrees. \nPress Enter to save losslessly",
                         "Rotation saved losslessly",
                         "Levels correction applied.",
                         "File saved with overwrite.",
                         "File saved with suffix.",
-                        "Image list start",
+                        "First image in the list",
                         "Next folder",
                         "Autoflipping ON",
                         "Autoflipping OFF", ]
-    pop_message_deadline = 0.
+    # pop_message_deadline = 0.
+    # pop_db = np.empty(0, dtype=[('text', "<U200"), ('alpha', np.float), ('duration', np.float), ('start', np.float), ('end', np.float)])
+    pop_db = []
 
     histogram_array = np.empty
     histo_texture = moderngl.texture
@@ -391,7 +394,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.random_image()
         else:
             self.load_image()
-            self.schedule_pop_message(0)
+            # self.schedule_pop_message(0)
         self.current_texture.use(5)
         self.transition_stage = 1
 
@@ -700,7 +703,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if not (self.pic_angle_future % 90):  # but at 90°-ish
                 self.schedule_pop_message(3)
         else:
-            self.schedule_pop_message(0)
+            self.schedule_pop_message(3, True)
 
     def check_if_image_in_window(self):
         rad_angle = math.radians(self.pic_angle)
@@ -858,8 +861,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.update_position()
 
     def reset_pic_position(self):
-        if self.pop_message_type == 3:
-            self.schedule_pop_message(0)
+        # if self.pop_message_type == 3:
+        self.schedule_pop_message(3, True)
         self.program_id = 1 - self.program_id
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
@@ -875,20 +878,37 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.update_position()
 
-    def schedule_pop_message(self, id):
-        self.pop_message_type = id
-        self.pop_message_deadline = 0
+    def schedule_pop_message(self, pop_id, remove=False, duration=4.):
+        self.pop_message_type = pop_id
+        for item in self.pop_db:
+            if pop_id == item['type']:
+                self.pop_db.remove(item)
+        if remove:
+            return
 
-    def pop_message_dispatcher(self, time_frame):
-        if self.pop_message_deadline == 0:
-            self.pop_message_deadline = time_frame + self.pop_message_timeout
+        message_text = self.pop_message_text[pop_id - 1]
+        if pop_id == 3:
+            duration = 8000000
+            message_text = message_text.format(360 - self.pic_angle_future % 360)
+        # if pop_id ==
 
-        if self.pop_message_type == 3:
-            self.pop_message_deadline = time_frame + self.pop_message_timeout
+        new_line = dict.fromkeys(['text', 'alpha', 'type', 'duration', 'start', 'end'], 0.)
+        new_line['text'] = message_text
+        new_line['duration'] = duration
+        new_line['type'] = pop_id
 
-        if self.pop_message_deadline < time_frame:
-            self.pop_message_deadline = 0
-            self.pop_message_type = 0
+        self.pop_db.append(new_line)
+        print(self.pop_db)
+
+    def pop_message_dispatcher(self, time):
+        for item in self.pop_db:
+            if item['end'] == 0:
+                item['start'] = time
+                item['end'] = time + item['duration']
+            else:
+                item['alpha'] = self.restrict((time - item['start']) * 2, 0, 1) * self.restrict(item['end'] - time, 0, 1)
+            if time > item['end']:
+                self.pop_db.remove(item)
 
     def do_auto_flip(self):
         self.mouse_move_cumulative += self.autoflip_speed
@@ -1049,8 +1069,8 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.pressed_mouse == 3:
             self.pic_angle_future += (- dx + dy) / 15
             self.move_image()
-            if self.pop_message_type == 3:
-                self.schedule_pop_message(0)
+            # if self.pop_message_type == 3:
+            self.schedule_pop_message(3, True)
 
     def mouse_scroll_event(self, x_offset, y_offset):
         self.run_flip_once = 1 if y_offset < 0 else -1
@@ -1088,6 +1108,42 @@ class ModernSlideShower(mglw.WindowConfig):
     def key_event(self, key, action, modifiers):
         # self.imgui.key_event(key, action, modifiers)
         if action == self.wnd.keys.ACTION_PRESS:
+            if self.settings_parameter:
+                if key == self.wnd.keys.TAB:
+                    self.settings_parameter = (self.settings_parameter + 1) % 4
+
+            elif self.levels_open:
+                if modifiers.shift:
+                    pass
+                else:
+                    if key == 59:  # ;
+                        self.levels_enabled = False
+                        self.update_position()
+                    if key == self.wnd.keys.P:
+                        self.previous_level_borders()
+                    if key == self.wnd.keys.O:
+                        self.empty_level_borders()
+                    if key == self.wnd.keys.TAB:
+                        self.levels_edit_band = (self.levels_edit_band + 1) % 4
+                    if key == self.wnd.keys.R:
+                        if self.levels_edit_band == 1:
+                            self.levels_edit_band = 0
+                        else:
+                            self.levels_edit_band = 1
+                    if key == self.wnd.keys.G:
+                        if self.levels_edit_band == 2:
+                            self.levels_edit_band = 0
+                        else:
+                            self.levels_edit_band = 2
+                    if key == self.wnd.keys.B:
+                        if self.levels_edit_band == 3:
+                            self.levels_edit_band = 0
+                        else:
+                            self.levels_edit_band = 3
+                    if key == self.wnd.keys.ENTER:
+                        self.apply_levels()
+                        return
+
             if modifiers.ctrl:
                 if key == self.wnd.keys.SPACE:
                     self.run_key_flipping = 4
@@ -1140,41 +1196,6 @@ class ModernSlideShower(mglw.WindowConfig):
                 elif key == self.wnd.keys.S:
                     self.save_current_texture(modifiers.shift)
 
-            if self.settings_parameter:
-                if key == self.wnd.keys.TAB:
-                    self.settings_parameter = (self.settings_parameter + 1) % 4
-
-            elif self.levels_open:
-                # print(key)
-                if modifiers.shift:
-                    pass
-                else:
-                    if key == 59:  # ;
-                        self.levels_enabled = False
-                        self.update_position()
-                    if key == self.wnd.keys.P:
-                        self.previous_level_borders()
-                    if key == self.wnd.keys.O:
-                        self.empty_level_borders()
-                    if key == self.wnd.keys.TAB:
-                        self.levels_edit_band = (self.levels_edit_band + 1) % 4
-                    if key == self.wnd.keys.R:
-                        if self.levels_edit_band == 1:
-                            self.levels_edit_band = 0
-                        else:
-                            self.levels_edit_band = 1
-                    if key == self.wnd.keys.G:
-                        if self.levels_edit_band == 2:
-                            self.levels_edit_band = 0
-                        else:
-                            self.levels_edit_band = 2
-                    if key == self.wnd.keys.B:
-                        if self.levels_edit_band == 3:
-                            self.levels_edit_band = 0
-                        else:
-                            self.levels_edit_band = 3
-                    if key == self.wnd.keys.ENTER:
-                        self.apply_levels()
         elif action == self.wnd.keys.ACTION_RELEASE:
             if key == self.wnd.keys.SPACE:
                 self.run_key_flipping = 0
@@ -1201,8 +1222,9 @@ class ModernSlideShower(mglw.WindowConfig):
             self.flip_once()
         if not (self.run_key_flipping == 0):
             self.key_flipping(time)
-        if self.pop_message_type > 0:
-            self.pop_message_dispatcher(time)
+        # if self.pop_message_type > 0:
+        #     self.pop_message_dispatcher(time)
+        self.pop_message_dispatcher(time)
         if self.autoflip_speed != 0 and self.pressed_mouse == 0:
             self.do_auto_flip()
 
@@ -1401,15 +1423,26 @@ class ModernSlideShower(mglw.WindowConfig):
                              "Image #: " + f"{self.image_index:d} of {self.image_count:d}"]
                 next_message_top = show_info_window(next_message_top, info_text, "File props")
 
-        if self.pop_message_type > 0:
-            style.alpha = np.clip(self.pop_message_deadline - time, 0, 1.)
-            imgui.set_next_window_position(30, next_message_top)
+        # if self.pop_message_type > 0:
+        #     style.alpha = np.clip(self.pop_message_deadline - time, 0, 1.)
+        #     imgui.set_next_window_position(30, next_message_top)
+        #
+        #     imgui.begin("C" * len(self.pop_message_text[self.pop_message_type - 1]), True, im_gui_window_flags)
+        #     imgui.set_window_font_scale(2)
+        #
+        #     imgui.text(self.pop_message_text[self.pop_message_type - 1])
+        #     imgui.end()
 
-            imgui.begin("C" * len(self.pop_message_text[self.pop_message_type - 1]), True, im_gui_window_flags)
-            imgui.set_window_font_scale(2)
-
-            imgui.text(self.pop_message_text[self.pop_message_type - 1])
-            imgui.end()
+        next_message_top += 10
+        if len(self.pop_db) > 0:
+            for item in self.pop_db:
+                style.alpha = item['alpha'] * .8
+                imgui.set_next_window_position(10, next_message_top)
+                imgui.begin(str(item['start']), True, im_gui_window_flags)
+                imgui.set_window_font_scale(1.2)
+                imgui.text(item['text'])
+                next_message_top += imgui.get_window_height()
+                imgui.end()
 
         imgui.render()
         self.imgui.render(imgui.get_draw_data())
