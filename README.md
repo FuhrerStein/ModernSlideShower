@@ -35,6 +35,7 @@ https://www.python.org/downloads/
 
 ## Usage
 Run program by launching ModernSlideShower.py
+
 To open a folder (and all of its subfolders) with images, pass it as an argument:
 
 ``` ModernSlideShower.py d:\Pics\Elephants```
