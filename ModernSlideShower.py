@@ -18,13 +18,13 @@ import random
 
 # from scipy.interpolate import BSpline
 
+#    todo: lossy image cropping in full edit mode
 #    todo: save settings to file
 #    todo: dialog to edit settings
 #    todo: program icon
 #    todo: shortcuts everywhere <- rewrite this to be more specific
 #    todo: all operations supported by messages <- rewrite this to be more specific
 #    todo: lossless jpeg image cropping
-#    todo: lossy image cropping in full edit mode
 #    todo: filelist position indicator
 #    todo: keyboard navigation on picture
 #    todo: show full image info
@@ -34,8 +34,12 @@ import random
 #    todo: zooming slideshow mode
 #    todo: filtering image with glsl code
 #    todo: sticking settings on some keys, like enable/disable levels
+#    todo: support for large images by splitting them into smaller subtextures
 
 
+
+#    todo+: swap levels adjustments: put gamma min and max, adjust gamma with l+r mouse
+#    todo+: do not apply borders when apply levels
 #    todo+: replace simple pop messages with full-fledged messages queue
 #    todo+: levels edit with left and right mouse
 #    todo+: show short image info
@@ -271,21 +275,17 @@ class ModernSlideShower(mglw.WindowConfig):
     run_flip_once = 0
     pressed_mouse = 0
 
-    # pop_message_timeout = 3.
-    # pop_message_type = 0
-    pop_message_text = ["File moved",
-                        "File copied",
-                        "Image rotated by {} degrees. \nPress Enter to save losslessly",
-                        "Rotation saved losslessly",
-                        "Levels correction applied.",
-                        "File saved with overwrite.",
-                        "File saved with suffix.",
-                        "First image in the list",
-                        "Next folder",
-                        "Autoflipping ON",
-                        "Autoflipping OFF", ]
-    # pop_message_deadline = 0.
-    # pop_db = np.empty(0, dtype=[('text', "<U200"), ('alpha', np.float), ('duration', np.float), ('start', np.float), ('end', np.float)])
+    pop_message_text = ["File {file_name}\nwas moved to folder\n{new_folder}",                               # 0
+                        "File {file_name}\nwas copied folder\n{new_folder}",                                 # 1
+                        "Image rotated by {angle} degrees. \nPress Enter to save losslessly",                # 2
+                        "Rotation saved losslessly",                                                         # 3
+                        "Levels correction applied. \nPress F12 to save image with replacement",             # 4
+                        "File {file_name}\nsaved with overwrite.",                                           # 5
+                        "File saved with new name\n{file_name}",                                             # 6
+                        "First image in the list",                                                           # 7
+                        "Entering folder {current_folder}",                                                  # 8
+                        "Autoflipping ON",                                                                   # 9
+                        "Autoflipping OFF", ]                                                                # 10
     pop_db = []
 
     histogram_array = np.empty
@@ -318,15 +318,22 @@ class ModernSlideShower(mglw.WindowConfig):
     
     [F1], [H] : show/hide this help window
     [Escape], [middle mouse button] : exit program
+    [drag with left mouse button] : move image on the screen
+    [drag with right mouse button] : zoom image
+    [drag with left and right mouse button] : rotate image
     [,] [.] : rotate image left and right by 90°
-    [M] : move image file out of folder tree into '--' subfolder
-    [C] : copy image file out of folder tree into '++' subfolder
     [Space], [right arrow] : show next image
     [left arrow] : show previous image
     [move mouse in circles clockwise] : show next image
     [move mouse in circles counterclockwise] : show previous image   
     [arrow up] : show random image
+    [M] : move image file out of folder tree into '--' subfolder
+    [C] : copy image file out of folder tree into '++' subfolder
     [L] : show/hide levels edit interface
+    [F12] : save current image as .jpg file with replacement
+    [F5] : save current playlist with compression
+    [F6] : save current playlist without compression (plain text)
+    
     ''',
                        '''
     No images found
@@ -356,6 +363,8 @@ class ModernSlideShower(mglw.WindowConfig):
         texture_coord = np.array([0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], dtype=np.float32)
         self.picture_vertices.buffer(texture_coord, '2f', ['in_texcoord'])
 
+        Image.MAX_IMAGE_PIXELS = 10000 * 10000 * 3
+
         picture_program_text = picture_glsl
         round_program_text = round_glsl
         if os.path.isfile('picture.glsl'):
@@ -365,8 +374,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
         dummy_program_description = moderngl_window.meta.ProgramDescription()
         shaders = program.ProgramShaders.from_single(dummy_program_description, picture_program_text)
-        # self.gl_program = shaders.create()
-        # self.gl_program_second = shaders.create()
         self.gl_program_pic = [shaders.create(), shaders.create()]
         shaders = program.ProgramShaders.from_single(dummy_program_description, round_program_text)
         self.gl_program_round = shaders.create()
@@ -393,7 +400,8 @@ class ModernSlideShower(mglw.WindowConfig):
             self.random_image()
         else:
             self.load_image()
-            self.schedule_pop_message(8, True)
+            self.unschedule_pop_message(7)
+            self.unschedule_pop_message(8)
         self.current_texture.use(5)
         self.transition_stage = 1
 
@@ -403,7 +411,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def empty_level_borders(self):
         self.levels_borders_previous = self.levels_borders
-        self.levels_borders = [[1., 0., 1., 0., 1.].copy() for _ in range(5)]
+        self.levels_borders = [[0., 1., 1., 0., 1.].copy() for _ in range(5)]
         self.generate_levels_texture()
 
     def generate_interface_geometry(self):
@@ -424,10 +432,10 @@ class ModernSlideShower(mglw.WindowConfig):
             [self.generate_levels_texture(band) for band in range(4)]
             return
         curve_array = np.linspace(0, 1, 256)
-        curve_array = (curve_array - self.levels_borders[band][1]) / (
-                self.levels_borders[band][2] - self.levels_borders[band][1])
+        curve_array = (curve_array - self.levels_borders[band][0]) / (
+                self.levels_borders[band][1] - self.levels_borders[band][0])
         curve_array = np.clip(curve_array, 0, 1)
-        curve_array = curve_array ** self.levels_borders[band][0]
+        curve_array = curve_array ** self.levels_borders[band][2]
         curve_array = curve_array * (self.levels_borders[band][4] - self.levels_borders[band][3]) + \
                       self.levels_borders[band][3]
         curve_array = np.clip(curve_array * 255, 0, 255)
@@ -627,11 +635,17 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.wnd.title = "ModernSlideShower: " + image_path
         self.reset_pic_position()
-        if self.last_image_folder is not None:
-            if os.path.dirname(self.image_list[self.image_index]) != self.last_image_folder:
-                self.schedule_pop_message(9)
-            self.last_image_folder = None
-        self.schedule_pop_message(8, self.image_index != 0)
+        # if self.last_image_folder is not None:
+        current_folder = os.path.dirname(self.image_list[self.image_index])
+        if current_folder != self.last_image_folder:
+            self.schedule_pop_message(8, 6, current_folder=current_folder)
+        self.last_image_folder = current_folder
+        if self.image_index == 0:
+            self.schedule_pop_message(7)
+            self.pic_zoom = self.pic_zoom_future * (self.starting_zoom_factor - .5) ** -1
+            self.update_position()
+        else:
+            self.unschedule_pop_message(7)
 
     def find_next_existing_image(self):
         start_number = self.new_image_index
@@ -648,7 +662,9 @@ class ModernSlideShower(mglw.WindowConfig):
                 return
 
     def move_file_out(self, do_copy=False):
-        parent_folder = os.path.dirname(self.image_list[self.image_index])
+        full_name = self.image_list[self.image_index]
+        short_name = os.path.basename(full_name)
+        parent_folder = os.path.dirname(full_name)
         own_subfolder = parent_folder[len(self.common_path):]
         prefix_subfolder = ["--", "++"][do_copy]
         if not own_subfolder.startswith("\\"):
@@ -675,10 +691,10 @@ class ModernSlideShower(mglw.WindowConfig):
             self.image_count = len(self.image_list)
             if not self.image_index < self.image_count:
                 self.new_image_index = 0
-            self.schedule_pop_message(1)
+            self.schedule_pop_message(0, duration=10, file_name=short_name, new_folder=new_folder)
             self.load_image()
         else:
-            self.schedule_pop_message(2)
+            self.schedule_pop_message(1, duration=10, file_name=short_name, new_folder=new_folder)
 
     def save_rotation(self):
         if self.pic_angle_future % 360 and self.jpegtran_exe:
@@ -687,7 +703,7 @@ class ModernSlideShower(mglw.WindowConfig):
             os.system(rotate_command)
 
             self.load_image()
-            self.schedule_pop_message(4)
+            self.schedule_pop_message(3)
 
     def rotate_image_90(self, left=False):
         remainder = self.pic_angle_future % 90
@@ -702,9 +718,9 @@ class ModernSlideShower(mglw.WindowConfig):
 
         if self.pic_angle_future % 360:  # not at original angle
             if not (self.pic_angle_future % 90):  # but at 90°-ish
-                self.schedule_pop_message(3)
+                self.schedule_pop_message(2, duration=8000000, angle=360 - self.pic_angle_future % 360)
         else:
-            self.schedule_pop_message(3, True)
+            self.unschedule_pop_message(2)
 
     def check_if_image_in_window(self):
         rad_angle = math.radians(self.pic_angle)
@@ -799,7 +815,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def next_image(self):
         self.new_image_index = (self.image_index + 1) % self.image_count
-        self.last_image_folder = os.path.dirname(self.image_list[self.image_index])
+        # self.last_image_folder = os.path.dirname(self.image_list[self.image_index])
         self.load_image()
 
     def previous_image(self):
@@ -820,11 +836,10 @@ class ModernSlideShower(mglw.WindowConfig):
         render_framebuffer.clear()
         render_framebuffer.use()
         self.gl_program_pic[self.program_id]['one_by_one'] = True
+        self.gl_program_pic[self.program_id]['hide_borders'] = 0
         self.picture_vertices.render(self.gl_program_pic[self.program_id])
         self.gl_program_pic[self.program_id]['one_by_one'] = False
-        # self.gl_program['one_by_one'] = True
-        # self.picture_vertices.render(self.gl_program)
-        # self.gl_program['one_by_one'] = False
+        self.gl_program_pic[self.program_id]['hide_borders'] = self.hide_borders
         self.ctx.screen.use()
         new_texture.use(5)
         self.current_texture = new_texture
@@ -833,7 +848,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.empty_level_borders()
         self.generate_levels_texture()
         self.update_position()
-        self.schedule_pop_message(5)
+        self.schedule_pop_message(4, 8000000)
 
     def save_current_texture(self, replace):
         texture_data = self.current_texture.read()
@@ -850,20 +865,20 @@ class ModernSlideShower(mglw.WindowConfig):
         orig_exif = self.im_object.getexif()
         print("Saving under name", new_file_name)
         new_image.save(new_file_name, quality=90, exif=orig_exif, optimize=True)
-        if replace:
-            self.schedule_pop_message(6)
-        else:
+        pop_message = 5
+        if not replace:
+            pop_message = 6
             self.image_list.insert(self.image_index + 1, new_file_name)
             self.image_count = len(self.image_list)
-            self.schedule_pop_message(7)
+        self.schedule_pop_message(pop_message, duration=8, file_name=os.path.basename(new_file_name))
 
     def show_curves_interface(self):
         self.levels_open = not self.levels_open
         self.update_position()
 
     def reset_pic_position(self):
-        # if self.pop_message_type == 3:
-        self.schedule_pop_message(3, True)
+        self.unschedule_pop_message(2)
+        self.unschedule_pop_message(4)
         self.program_id = 1 - self.program_id
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
@@ -879,19 +894,16 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.update_position()
 
-    def schedule_pop_message(self, pop_id, remove=False, duration=4.):
+    def unschedule_pop_message(self, pop_id):
         for item in self.pop_db:
             if pop_id == item['type']:
                 self.pop_db.remove(item)
-        if remove:
-            return
 
-        message_text = self.pop_message_text[pop_id - 1]
-        if pop_id == 3:
-            duration = 8000000
-            message_text = message_text.format(360 - self.pic_angle_future % 360)
+    def schedule_pop_message(self, pop_id, duration=4., **kwargs):
+        self.unschedule_pop_message(pop_id)
+        message_text = self.pop_message_text[pop_id].format(**kwargs)
 
-        new_line = dict.fromkeys(['text', 'alpha', 'type', 'duration', 'start', 'end'], 0.)
+        new_line = dict.fromkeys(['type', 'alpha', 'duration', 'start', 'end'], 0.)
         new_line['text'] = message_text
         new_line['duration'] = duration
         new_line['type'] = pop_id
@@ -924,9 +936,10 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.settings_parameter = self.restrict(self.settings_parameter, 1, 3)
                 self.virtual_cursor_position *= 0
         elif self.levels_open:
-            if abs(self.virtual_cursor_position[0]) > 100:
-                self.levels_edit_group += 1 if self.virtual_cursor_position[0] > 0 else -1
-                self.levels_edit_group = self.restrict(self.levels_edit_group, 0, 2)
+            if abs(self.virtual_cursor_position[0]) > 200:
+                self.levels_edit_group = 1 if self.virtual_cursor_position[0] > 0 else 0
+                # self.levels_edit_group += 1 if self.virtual_cursor_position[0] > 0 else -1
+                # self.levels_edit_group = self.restrict(self.levels_edit_group, 0, 1)
                 # self.levels_edit_parameter += 1 if self.virtual_cursor_position[0] > 0 else -1
                 # self.levels_edit_parameter = self.restrict(self.levels_edit_parameter, 0, 4)
                 self.virtual_cursor_position *= 0
@@ -985,10 +998,10 @@ class ModernSlideShower(mglw.WindowConfig):
     def autoflip_toggle(self):
         if self.autoflip_speed == 0:
             self.autoflip_speed = .5
-            self.schedule_pop_message(10)
+            self.schedule_pop_message(9)
         else:
             self.autoflip_speed = 0
-            self.schedule_pop_message(11)
+            self.schedule_pop_message(10)
 
     def update_position(self):
         texture_size = self.current_texture.size
@@ -1027,11 +1040,10 @@ class ModernSlideShower(mglw.WindowConfig):
             self.hide_borders = self.restrict(self.hide_borders * (1 - amount) - amount / 1000, 0, 1)
             self.gl_program_pic[self.program_id]['hide_borders'] = self.hide_borders
         elif self.levels_open:
-            # if self.pressed_mouse == 1:
             edit_parameter = self.levels_edit_parameter - 1
             if edit_parameter > 2:
                 amount = - amount
-            if edit_parameter == 0:
+            if edit_parameter == 2:
                 self.levels_borders[self.levels_edit_band][edit_parameter] = self.restrict(
                     self.levels_borders[self.levels_edit_band][edit_parameter] * (1 + amount), 0.01, 10)
             else:
@@ -1068,8 +1080,7 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.pressed_mouse == 3:
             self.pic_angle_future += (- dx + dy) / 15
             self.move_image()
-            # if self.pop_message_type == 3:
-            self.schedule_pop_message(3, True)
+            self.unschedule_pop_message(2)
 
     def mouse_scroll_event(self, x_offset, y_offset):
         self.run_flip_once = 1 if y_offset < 0 else -1
@@ -1083,10 +1094,10 @@ class ModernSlideShower(mglw.WindowConfig):
             return
 
         if self.levels_open and self.levels_enabled:
-            if button < 3:
-                self.levels_edit_parameter = self.levels_edit_group * 2 + button - 1
-                if self.levels_edit_parameter == 0:
-                    self.levels_edit_parameter = 1
+            if self.pressed_mouse < 4:
+                self.levels_edit_parameter = (self.levels_edit_group * 3 + self.pressed_mouse) % 6
+                # if self.levels_edit_parameter == 0:
+                #     self.levels_edit_parameter = 1
 
         if self.pressed_mouse == 5:
             self.random_image()
@@ -1120,6 +1131,7 @@ class ModernSlideShower(mglw.WindowConfig):
                         self.update_position()
                     if key == self.wnd.keys.P:
                         self.previous_level_borders()
+                        return
                     if key == self.wnd.keys.O:
                         self.empty_level_borders()
                     if key == self.wnd.keys.TAB:
@@ -1150,8 +1162,6 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.run_key_flipping = 4
                 elif key == self.wnd.keys.LEFT:
                     self.run_key_flipping = -8
-                elif key == self.wnd.keys.S:
-                    self.save_list_file(True)
                 elif key == self.wnd.keys.R:
                     self.current_texture = self.image_texture
                     self.current_texture.use(5)
@@ -1186,6 +1196,10 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.rotate_image_90()
                 elif key == self.wnd.keys.H:
                     self.central_message_showing = 0 if self.central_message_showing else 1
+                elif key == self.wnd.keys.F5:
+                    self.save_list_file(True)
+                elif key == self.wnd.keys.F6:
+                    self.save_list_file(False)
                 elif key == self.wnd.keys.F12:
                     self.save_current_texture(True)
                 elif key == self.wnd.keys.F1:
@@ -1333,22 +1347,22 @@ class ModernSlideShower(mglw.WindowConfig):
 
             def add_cells_with_text(texts, list_of_selected):
                 for n, text in enumerate(texts):
-                    letters_blue = .5 if n in list_of_selected else 1
+                    letters_blue = .5 if int(n / 2) in list_of_selected else 1
                     imgui.push_style_color(imgui.STYLE_ALPHA, 1, 1, letters_blue)
                     imgui.text(text)
                     imgui.pop_style_color()
                     imgui.next_column()
 
             imgui.columns(3)
-            add_cells_with_text(["    Gamma", "   Input", "   Output"], [self.levels_edit_group])
+            add_cells_with_text(["", "Input", "   Output"], [self.levels_edit_group])
 
             imgui.columns(6)
-            add_cells_with_text(["", "", " min", " max", " min", " max"], [self.levels_edit_group * 2,
+            add_cells_with_text(["", " min", " max", "gamma", " min", " max"], [self.levels_edit_group * 2,
                                                                            self.levels_edit_group * 2 + 1])
 
             def add_grid_elements(row_name, row_number):
                 # active_column = self.mouse_direct_edit + self.pressed_mouse - 1
-                active_columns = [self.levels_edit_group * 2 - 1, self.levels_edit_group * 2]
+                active_columns = [self.levels_edit_group * 3, self.levels_edit_group * 3 + 1, self.levels_edit_group * 3 + 2]
                 # if (self.mouse_direct_edit == 3 and self.pressed_mouse == 0) or self.mouse_direct_edit == 0:
                 #     active_column = - 1
                 # bg_color = (.2, .2, .2)
@@ -1361,7 +1375,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 for column in range(5):
                     if column == self.levels_edit_parameter - 1 and self.levels_edit_band == row_number:
                         bg_color = (.7, .2, .2)
-                    elif column in active_columns or self.levels_edit_band == row_number:
+                    elif column in active_columns and self.levels_edit_band == row_number:
                         bg_color = (.2, .2, .6)
                     else:
                         bg_color = (.2, .2, .2)
@@ -1421,18 +1435,8 @@ class ModernSlideShower(mglw.WindowConfig):
                              "Image size: " + f"{im_mp:.2f} megapixels",
                              "Image #: " + f"{self.image_index:d} of {self.image_count:d}"]
                 next_message_top = show_info_window(next_message_top, info_text, "File props")
+            next_message_top += 10
 
-        # if self.pop_message_type > 0:
-        #     style.alpha = np.clip(self.pop_message_deadline - time, 0, 1.)
-        #     imgui.set_next_window_position(30, next_message_top)
-        #
-        #     imgui.begin("C" * len(self.pop_message_text[self.pop_message_type - 1]), True, im_gui_window_flags)
-        #     imgui.set_window_font_scale(2)
-        #
-        #     imgui.text(self.pop_message_text[self.pop_message_type - 1])
-        #     imgui.end()
-
-        next_message_top += 10
         if len(self.pop_db) > 0:
             for item in self.pop_db:
                 style.alpha = item['alpha'] * .8
