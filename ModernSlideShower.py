@@ -23,7 +23,6 @@ import random
 #    todo: dialog to edit settings
 #    todo: program icon
 #    todo: shortcuts everywhere <- rewrite this to be more specific
-#    todo: all operations supported by messages <- rewrite this to be more specific
 #    todo: lossless jpeg image cropping
 #    todo: filelist position indicator
 #    todo: keyboard navigation on picture
@@ -33,11 +32,9 @@ import random
 #    todo: different color curves
 #    todo: zooming slideshow mode
 #    todo: filtering image with glsl code
-#    todo: sticking settings on some keys, like enable/disable levels
 #    todo: support for large images by splitting them into smaller subtextures
 
-
-
+#    todo+: sticking of enable/disable levels key
 #    todo+: swap levels adjustments: put gamma min and max, adjust gamma with l+r mouse
 #    todo+: do not apply borders when apply levels
 #    todo+: replace simple pop messages with full-fledged messages queue
@@ -263,6 +260,7 @@ class ModernSlideShower(mglw.WindowConfig):
     hide_borders = 0.02
     starting_zoom_factor = 1.03
     transition_center = (.4, .4)
+    last_key_press_time = 0
 
     settings_parameter = 0
 
@@ -316,6 +314,7 @@ class ModernSlideShower(mglw.WindowConfig):
                        '''
     Usage shortcuts
     
+    
     [F1], [H] : show/hide this help window
     [Escape], [middle mouse button] : exit program
     [drag with left mouse button] : move image on the screen
@@ -327,12 +326,19 @@ class ModernSlideShower(mglw.WindowConfig):
     [move mouse in circles clockwise] : show next image
     [move mouse in circles counterclockwise] : show previous image   
     [arrow up] : show random image
+    [page up] : show first image in previous folder
+    [page down] : show first image in next folder
     [M] : move image file out of folder tree into '--' subfolder
     [C] : copy image file out of folder tree into '++' subfolder
     [L] : show/hide levels edit interface
+    [I] : show/hide basic image information
     [F12] : save current image as .jpg file with replacement
+    [F9] : save current image as *_e.jpg file without replacing original
     [F5] : save current playlist with compression
     [F6] : save current playlist without compression (plain text)
+    [P] : show settings window
+    [A] : start slideshow (automatic image flipping)
+    [Ctrl+R] : revert changes to original image
     
     ''',
                        '''
@@ -909,7 +915,7 @@ class ModernSlideShower(mglw.WindowConfig):
         new_line['type'] = pop_id
 
         self.pop_db.append(new_line)
-        print(self.pop_db)
+        # print(self.pop_db)
 
     def pop_message_dispatcher(self, time):
         for item in self.pop_db:
@@ -1118,42 +1124,40 @@ class ModernSlideShower(mglw.WindowConfig):
     def key_event(self, key, action, modifiers):
         # self.imgui.key_event(key, action, modifiers)
         if action == self.wnd.keys.ACTION_PRESS:
+            self.last_key_press_time = self.timer.time
             if self.settings_parameter:
                 if key == self.wnd.keys.TAB:
                     self.settings_parameter = (self.settings_parameter + 1) % 4
 
             elif self.levels_open:
-                if modifiers.shift:
-                    pass
-                else:
-                    if key == 59:  # ;
-                        self.levels_enabled = False
-                        self.update_position()
-                    if key == self.wnd.keys.P:
-                        self.previous_level_borders()
-                        return
-                    if key == self.wnd.keys.O:
-                        self.empty_level_borders()
-                    if key == self.wnd.keys.TAB:
-                        self.levels_edit_band = (self.levels_edit_band + 1) % 4
-                    if key == self.wnd.keys.R:
-                        if self.levels_edit_band == 1:
-                            self.levels_edit_band = 0
-                        else:
-                            self.levels_edit_band = 1
-                    if key == self.wnd.keys.G:
-                        if self.levels_edit_band == 2:
-                            self.levels_edit_band = 0
-                        else:
-                            self.levels_edit_band = 2
-                    if key == self.wnd.keys.B:
-                        if self.levels_edit_band == 3:
-                            self.levels_edit_band = 0
-                        else:
-                            self.levels_edit_band = 3
-                    if key == self.wnd.keys.ENTER:
-                        self.apply_levels()
-                        return
+                if key == 59:  # ;
+                    self.levels_enabled = not self.levels_enabled
+                    self.update_position()
+                if key == self.wnd.keys.P:
+                    self.previous_level_borders()
+                    return
+                if key == self.wnd.keys.O:
+                    self.empty_level_borders()
+                if key == self.wnd.keys.TAB:
+                    self.levels_edit_band = (self.levels_edit_band + 1) % 4
+                if key == self.wnd.keys.R:
+                    if self.levels_edit_band == 1:
+                        self.levels_edit_band = 0
+                    else:
+                        self.levels_edit_band = 1
+                if key == self.wnd.keys.G:
+                    if self.levels_edit_band == 2:
+                        self.levels_edit_band = 0
+                    else:
+                        self.levels_edit_band = 2
+                if key == self.wnd.keys.B:
+                    if self.levels_edit_band == 3:
+                        self.levels_edit_band = 0
+                    else:
+                        self.levels_edit_band = 3
+                if key == self.wnd.keys.ENTER:
+                    self.apply_levels()
+                    return
 
             if modifiers.ctrl:
                 if key == self.wnd.keys.SPACE:
@@ -1196,18 +1200,20 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.rotate_image_90()
                 elif key == self.wnd.keys.H:
                     self.central_message_showing = 0 if self.central_message_showing else 1
+                elif key == self.wnd.keys.F1:
+                    self.central_message_showing = 0 if self.central_message_showing else 1
                 elif key == self.wnd.keys.F5:
                     self.save_list_file(True)
                 elif key == self.wnd.keys.F6:
                     self.save_list_file(False)
                 elif key == self.wnd.keys.F12:
                     self.save_current_texture(True)
-                elif key == self.wnd.keys.F1:
-                    self.central_message_showing = 0 if self.central_message_showing else 1
+                elif key == self.wnd.keys.F9:
+                    self.save_current_texture(False)
                 elif key == self.wnd.keys.P:
                     self.settings_parameter = 0 if self.settings_parameter else 1
-                elif key == self.wnd.keys.S:
-                    self.save_current_texture(modifiers.shift)
+                # elif key == self.wnd.keys.S:
+                #     self.save_current_texture(modifiers.shift)
 
         elif action == self.wnd.keys.ACTION_RELEASE:
             if key == self.wnd.keys.SPACE:
@@ -1217,8 +1223,9 @@ class ModernSlideShower(mglw.WindowConfig):
             elif key == self.wnd.keys.LEFT:
                 self.run_key_flipping = 0
             elif key == 59:  # [;]
-                self.levels_enabled = True
-                self.update_position()
+                if self.timer.time - self.last_key_press_time > .5:
+                    self.levels_enabled = not self.levels_enabled
+                    self.update_position()
 
     def read_and_clear_histo(self):
         hg = np.frombuffer(self.histo_texture.read(), dtype=np.uint32).reshape(5, 256).copy()
@@ -1235,8 +1242,6 @@ class ModernSlideShower(mglw.WindowConfig):
             self.flip_once()
         if not (self.run_key_flipping == 0):
             self.key_flipping(time)
-        # if self.pop_message_type > 0:
-        #     self.pop_message_dispatcher(time)
         self.pop_message_dispatcher(time)
         if self.autoflip_speed != 0 and self.pressed_mouse == 0:
             self.do_auto_flip()
@@ -1309,7 +1314,7 @@ class ModernSlideShower(mglw.WindowConfig):
             imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 1), .2, .2)
             imgui.slider_float("Speed of transition between images", self.transition_speed, 0.001, 1, '%.4f', 4)
             imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 2), .2, .2)
-            imgui.slider_float("Zoom or newly shown image", self.starting_zoom_factor, 0, 5, '%.3f', 4)
+            imgui.slider_float("Zoom of newly shown image", self.starting_zoom_factor, 0, 5, '%.3f', 4)
             imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 3), .2, .2)
             imgui.slider_float("Hide image borders", self.hide_borders, 0, 1, '%.3f', 2)
             imgui.pop_style_color(3)
@@ -1464,7 +1469,7 @@ def main_loop() -> None:
         window.mouse_exclusivity = True
     window.print_context_info()
     mglw.activate_context(window=window)
-    timer = moderngl_window.timers.clock.Timer()
+    timer = mglw.timers.clock.Timer()
     window.config = ModernSlideShower(ctx=window.ctx, wnd=window, timer=timer)
 
     timer.start()
