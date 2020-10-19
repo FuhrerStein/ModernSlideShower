@@ -31,7 +31,7 @@ https://www.python.org/downloads/
 
   Or just double-click **install requirements.cmd** if you are using Windows.
   
-  To be able to save losslessly rotated jpeg files, put jpegtran.exe into folder with script (Windows only)
+  To be able to save losslessly rotated jpeg files, put jpegtran.exe into folder with this program (Windows only)
 
 ## Usage
 Run program by launching ModernSlideShower.py
