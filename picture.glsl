@@ -19,6 +19,7 @@ out float translucency;
 out float f_show_amount;
 out float min_edge;
 out float max_edge;
+out float tran_blur;
 
 
 void main() {
@@ -32,6 +33,14 @@ void main() {
     f_show_amount = smoothstep(0, .7, show_amount);
     min_edge = 2.5 * (smoothstep(0, 1, show_amount)) + show_amount;
     max_edge = 2 * (smoothstep(.7, 1, show_amount)) + show_amount;
+    tran_blur = smoothstep(0.4, 1, -log(1 - show_amount));
+    tran_blur = smoothstep(0.1, 1, pow(show_amount, 2));
+    tran_blur = smoothstep(-.01, 1, pow(show_amount, 1.2));
+    tran_blur = 1 / smoothstep(-.01, 1, pow(show_amount, 1.2)) - 1;
+    tran_blur = smoothstep(-.5, 0, -show_amount) * 100 + 1 + (smoothstep(0, .5, transparency) * 10);
+//    tran_blur = -log2(show_amount + .25) * 5;
+//    tran_blur = 1 / pix_size.y / zoom_scale / 2;
+//    tran_blur = pow(show_amount, 1.2);
 
     if (one_by_one)
     {
@@ -51,6 +60,7 @@ uniform bool useCurves;
 uniform bool count_histograms;
 uniform vec2 transition_center;
 uniform float zoom_scale;
+uniform float overblur;
 
 out vec4 fragColor;
 in vec2 uv0;
@@ -58,11 +68,46 @@ in float translucency;
 in float f_show_amount;
 in float min_edge;
 in float max_edge;
+in float tran_blur;
 
 uniform float hide_borders;
 
 void main() {
-    vec4 tempColor = textureLod(texture0, uv0, - log(zoom_scale));
+//    vec4 tempColor = textureLod(texture0, uv0, log(zoom_scale) / (1 - overblur) + tran_blur);
+//    vec4 tempColor = textureLod(texture0, uv0, - log2(zoom_scale) + overblur + tran_blur);
+//    vec4 tempColor = textureGrad(texture0, uv0, vec2(overblur), vec2(overblur));
+    vec2 dx = dFdx(uv0) * overblur * tran_blur;
+    vec2 dy = dFdy(uv0) * overblur * tran_blur;
+    vec4 tempColor = vec4(0);
+    vec2 zero = vec2(0);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * vec2( overblur / 100,  overblur / 100), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * vec2(-overblur / 100,  overblur / 100), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * vec2(-overblur / 100, -overblur / 100), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * vec2( overblur / 100, -overblur / 100), dx, dy);
+
+    tempColor = textureGrad(texture0, uv0, dx, dy);
+    if (overblur * tran_blur > 1.1)
+    {
+        tempColor *= .2;
+        tempColor += .2 * textureGrad(texture0, uv0 + .25 * ( dx + dy), dx, dy);
+        tempColor += .2 * textureGrad(texture0, uv0 + .25 * (-dx + dy), dx, dy);
+        tempColor += .2 * textureGrad(texture0, uv0 + .25 * (-dx - dy), dx, dy);
+        tempColor += .2 * textureGrad(texture0, uv0 + .25 * ( dx - dy), dx, dy);
+    }
+
+//    tempColor += .25 * textureGrad(texture0, uv0 + .25 * ( dx + dy), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .25 * (-dx + dy), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .25 * (-dx - dy), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .25 * ( dx - dy), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * ( dx + dy), zero, zero);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * (-dx + dy), zero, zero);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * (-dx - dy), zero, zero);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * ( dx - dy), zero, zero);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * vec2(-overblur / 100,  overblur / 100), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * vec2(-overblur / 100, -overblur / 100), dx, dy);
+//    tempColor += .25 * textureGrad(texture0, uv0 + .5 * vec2( overblur / 100, -overblur / 100), dx, dy);
+
+
 
     if(useCurves)
     {

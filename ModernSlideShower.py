@@ -18,6 +18,8 @@ import random
 
 # from scipy.interpolate import BSpline
 
+
+#    todo: find memory leaks
 #    todo: lossy image cropping in full edit mode
 #    todo: save settings to file
 #    todo: dialog to edit settings
@@ -33,44 +35,49 @@ import random
 #    todo: zooming slideshow mode
 #    todo: filtering image with glsl code
 #    todo: support for large images by splitting them into smaller subtextures
+#    todo: seam resizing
+#    todo: generalize settings
+#    todo: set settings change speeds in setting settings
 
-#    todo+: if jpegtan was not found, do not show message to save rotation
-#    todo+: sticking of enable/disable levels key
-#    todo+: swap levels adjustments: put gamma min and max, adjust gamma with l+r mouse
-#    todo+: do not apply borders when apply levels
-#    todo+: replace simple pop messages with full-fledged messages queue
-#    todo+: levels edit with left and right mouse
-#    todo+: show short image info
-#    todo+: navigate through levels interface with only mouse
-#    todo+: navigate through settings by mouse
-#    todo+: adjustable between-image transition
-#    todo+: do not regenerate empty image if it is already there
-#    todo+: nice empty image
-#    todo+: save 90°-rotation when saving edited image
-#    todo+: autoflip mode
-#    todo+: smooth image change
-#    todo+: random image jump from mouse
-#    todo+: self.pressed_mouse must support middle button with other buttons
-#    todo+: show friendly message in case no images are found
-#    todo+: start with random image if playlist had _r in its name
-#    todo+: pleasant image centering
-#    todo+: show message when changing folder
-#    todo+: simple slidelist compression to reduce file size.
-#    todo+: make image sharpest possible using right mipmap texture
-#    todo+: show message when ending list
-#    todo+: update histograms on the fly
-#    todo+: save edited image
-#    todo+: interface to adjust levels
-#    todo+: different color levels
-#    todo+: mouse action for left+right drag
-#    todo+: help message on F1 or H
-#    todo+: free image rotation
-#    todo+: rotate indicator
-#    todo+: copy/move indicator
-#    todo+: work with broken and gray jpegs
-#    todo+: keep image in visible area
-#    todo+: mouse flip indicator
-#    todo+: inertial movement and zooming
+
+#    todone: simple blur during transition
+#    todone: if jpegtan was not found, do not show message to save rotation
+#    todone: sticking of enable/disable levels key
+#    todone: swap levels adjustments: put gamma min and max, adjust gamma with l+r mouse
+#    todone: do not apply borders when apply levels
+#    todone: replace simple pop messages with full-fledged messages queue
+#    todone: levels edit with left and right mouse
+#    todone: show short image info
+#    todone: navigate through levels interface with only mouse
+#    todone: navigate through settings by mouse
+#    todone: adjustable between-image transition
+#    todone: do not regenerate empty image if it is already there
+#    todone: nice empty image
+#    todone: save 90°-rotation when saving edited image
+#    todone: autoflip mode
+#    todone: smooth image change
+#    todone: random image jump from mouse
+#    todone: self.pressed_mouse must support middle button with other buttons
+#    todone: show friendly message in case no images are found
+#    todone: start with random image if playlist had _r in its name
+#    todone: pleasant image centering
+#    todone: show message when changing folder
+#    todone: simple slidelist compression to reduce file size.
+#    todone: make image sharpest possible using right mipmap texture
+#    todone: show message when ending list
+#    todone: update histograms on the fly
+#    todone: save edited image
+#    todone: interface to adjust levels
+#    todone: different color levels
+#    todone: mouse action for left+right drag
+#    todone: help message on F1 or H
+#    todone: free image rotation
+#    todone: rotate indicator
+#    todone: copy/move indicator
+#    todone: work with broken and gray jpegs
+#    todone: keep image in visible area
+#    todone: mouse flip indicator
+#    todone: inertial movement and zooming
 
 
 round_glsl = '''
@@ -278,10 +285,36 @@ class ModernSlideShower(mglw.WindowConfig):
     last_image_folder = None
 
     # Image transition
-    transition_speed = .02
-    hide_borders = 0.02
-    starting_zoom_factor = 1.03
+    # transition_speed = .02
+    # hide_borders = 0.02
+    # starting_zoom_factor = 1.03
     transition_center = (.4, .4)
+
+    transition_speed = 1
+    hide_borders = 2
+    starting_zoom_factor = 3
+    overblur = 4
+
+    configs = {
+        transition_speed: .02,
+        hide_borders: 0.02,
+        starting_zoom_factor: 1.03,
+        overblur: 1.
+    }
+    config_desriptions = {
+        transition_speed: "Speed of transition between images",
+        hide_borders: "Hide image borders",
+        starting_zoom_factor: "Zoom of newly shown image",
+        overblur:      "overblur"
+    }
+
+    config_formats = {
+        transition_speed:     (0.001, 1, '%.4f', 4),
+        hide_borders:         (0, 1, '%.3f', 2),
+        starting_zoom_factor: (0, 5, '%.3f', 4),
+        overblur: (1, 100, '%.1f', 1.5),
+    }
+
     last_key_press_time = 0
 
     settings_parameter = 0
@@ -295,17 +328,17 @@ class ModernSlideShower(mglw.WindowConfig):
     run_flip_once = 0
     pressed_mouse = 0
 
-    pop_message_text = ["File {file_name}\nwas moved to folder\n{new_folder}",                               # 0
-                        "File {file_name}\nwas copied folder\n{new_folder}",                                 # 1
-                        "Image rotated by {angle} degrees. \nPress Enter to save losslessly",                # 2
-                        "Rotation saved losslessly",                                                         # 3
-                        "Levels correction applied. \nPress F12 to save image with replacement",             # 4
-                        "File {file_name}\nsaved with overwrite.",                                           # 5
-                        "File saved with new name\n{file_name}",                                             # 6
-                        "First image in the list",                                                           # 7
-                        "Entering folder {current_folder}",                                                  # 8
-                        "Autoflipping ON",                                                                   # 9
-                        "Autoflipping OFF", ]                                                                # 10
+    pop_message_text = ["File {file_name}\nwas moved to folder\n{new_folder}",  # 0
+                        "File {file_name}\nwas copied folder\n{new_folder}",  # 1
+                        "Image rotated by {angle} degrees. \nPress Enter to save losslessly",  # 2
+                        "Rotation saved losslessly",  # 3
+                        "Levels correction applied. \nPress F12 to save image with replacement",  # 4
+                        "File {file_name}\nsaved with overwrite.",  # 5
+                        "File saved with new name\n{file_name}",  # 6
+                        "First image in the list",  # 7
+                        "Entering folder {current_folder}",  # 8
+                        "Autoflipping ON",  # 9
+                        "Autoflipping OFF", ]  # 10
     pop_db = []
 
     histogram_array = np.empty
@@ -670,7 +703,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.last_image_folder = current_folder
         if self.image_index == 0:
             self.schedule_pop_message(7)
-            self.pic_zoom = self.pic_zoom_future * (self.starting_zoom_factor - .5) ** -1
+            self.pic_zoom = self.pic_zoom_future * (self.configs[self.starting_zoom_factor] - .5) ** -1
             self.update_position()
         else:
             self.unschedule_pop_message(7)
@@ -773,8 +806,8 @@ class ModernSlideShower(mglw.WindowConfig):
         if its_size != 0:
             self.pic_position_future += correction_vector / 10
 
-        if self.transition_stage < 1:
-            transition_step = self.transition_speed * (1.2 - self.transition_stage)
+        if self.transition_stage < 1:    # todo: make so that transition_stage doesn't lag behind mouse_move_cumulative
+            transition_step = self.configs[self.transition_speed] * (1.2 - self.transition_stage)
             self.transition_stage += transition_step / (1 - abs(self.mouse_move_cumulative) / 100)
             # print(self.transition_stage)
             if self.transition_stage > .99999:
@@ -792,7 +825,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
         scale_disproportion = abs(self.pic_zoom_future / self.pic_zoom - 1) ** .7 * .2
         pic_zoom_new = self.pic_zoom * (
-                    1 - scale_disproportion * self.transition_stage ** 2) + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
+                1 - scale_disproportion * self.transition_stage ** 2) + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
         if pic_zoom_new / self.pic_zoom < 1:
             centerting_factor = 1 - scale_disproportion / self.pic_zoom / 100
             self.pic_position_future = self.pic_position_future * centerting_factor
@@ -853,6 +886,7 @@ class ModernSlideShower(mglw.WindowConfig):
     def random_image(self):
         self.new_image_index = int(self.image_count * random.random())
         self.load_image()
+        self.unschedule_pop_message(8)
 
     def first_image(self):
         self.new_image_index = 0
@@ -867,7 +901,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_pic[self.program_id]['hide_borders'] = 0
         self.picture_vertices.render(self.gl_program_pic[self.program_id])
         self.gl_program_pic[self.program_id]['one_by_one'] = False
-        self.gl_program_pic[self.program_id]['hide_borders'] = self.hide_borders
+        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[self.hide_borders]
         self.ctx.screen.use()
         new_texture.use(5)
         self.current_texture = new_texture
@@ -910,7 +944,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.program_id = 1 - self.program_id
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
-        self.pic_zoom = self.pic_zoom_future * self.starting_zoom_factor
+        self.pic_zoom = self.pic_zoom_future * self.configs[self.starting_zoom_factor]
         self.pic_position = np.array([0., 0.])
         self.pic_position_future = np.array([0., 0.])
         self.pic_position_speed = np.array([0., 0.])
@@ -945,7 +979,8 @@ class ModernSlideShower(mglw.WindowConfig):
                 item['start'] = time
                 item['end'] = time + item['duration']
             else:
-                item['alpha'] = self.restrict((time - item['start']) * 2, 0, 1) * self.restrict(item['end'] - time, 0, 1)
+                item['alpha'] = self.restrict((time - item['start']) * 2, 0, 1) * self.restrict(item['end'] - time, 0,
+                                                                                                1)
             if time > item['end']:
                 self.pop_db.remove(item)
 
@@ -961,7 +996,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.settings_parameter:
             if abs(self.virtual_cursor_position[1]) > 150:
                 self.settings_parameter += 1 if self.virtual_cursor_position[1] > 0 else -1
-                self.settings_parameter = self.restrict(self.settings_parameter, 1, 3)
+                self.settings_parameter = self.restrict(self.settings_parameter, 1, len(self.configs))
                 self.virtual_cursor_position *= 0
         elif self.levels_open:
             if abs(self.virtual_cursor_position[0]) > 200:
@@ -991,7 +1026,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.mouse_move_atangent_delta * self.mouse_move_cumulative > 0:
             self.mouse_unflipping_speed = .5
         mouse_move_delta = self.mouse_move_atangent_delta * (
-                    4 - math.copysign(2, self.mouse_move_atangent_delta * self.mouse_move_cumulative)) * mouse_speed
+                4 - math.copysign(2, self.mouse_move_atangent_delta * self.mouse_move_cumulative)) * mouse_speed
 
         if self.autoflip_speed != 0:
             self.autoflip_speed += mouse_move_delta * .01
@@ -1042,7 +1077,9 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_pic[self.program_id]['wnd_size'] = self.wnd.size
         self.gl_program_pic[self.program_id]['show_amount'] = self.transition_stage
         self.gl_program_pic[self.program_id]['transparency'] = 0
-        self.gl_program_pic[self.program_id]['hide_borders'] = self.hide_borders
+        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[self.hide_borders]
+        # self.gl_program_pic[self.program_id]['overblur'] = -math.log2(1 - self.configs[self.overblur]) * 5
+        self.gl_program_pic[self.program_id]['overblur'] = self.configs[self.overblur]
         self.gl_program_pic[self.program_id]['transition_center'] = self.transition_center
         self.gl_program_pic[1 - self.program_id]['transparency'] = self.transition_stage
         self.gl_program_round['wnd_size'] = self.wnd.size
@@ -1060,13 +1097,22 @@ class ModernSlideShower(mglw.WindowConfig):
         return val
 
     def change_settings(self, amount):
-        if self.settings_parameter == 1:
-            self.transition_speed = self.restrict(self.transition_speed * (1 - amount), 0.001, 1)
-        elif self.settings_parameter == 2:
-            self.starting_zoom_factor = self.restrict(self.starting_zoom_factor * (1 - amount), 0.0001, 5)
-        elif self.settings_parameter == 3:
-            self.hide_borders = self.restrict(self.hide_borders * (1 - amount) - amount / 1000, 0, 1)
-            self.gl_program_pic[self.program_id]['hide_borders'] = self.hide_borders
+
+        if self.settings_parameter:
+            self.configs[self.settings_parameter] = self.restrict(self.configs[self.settings_parameter] *
+                                                                  (1 - amount) - amount / 1000,
+                                                                  self.config_formats[self.settings_parameter][0],
+                                                                  self.config_formats[self.settings_parameter][1])
+            self.update_position()
+
+        # if self.settings_parameter == 1:
+        #     self.configs[self.transition_speed] = self.restrict(self.configs[self.transition_speed] * (1 - amount), 0.001, 1)
+        # elif self.settings_parameter == 2:
+        #     self.configs[self.starting_zoom_factor] = self.restrict(self.configs[self.starting_zoom_factor] * (1 - amount), 0.0001, 5)
+        # elif self.settings_parameter == 3:
+        #     self.configs[self.hide_borders] = self.restrict(self.configs[self.hide_borders] * (1 - amount) - amount / 1000, 0, 1)
+        #     self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[self.hide_borders]
+
         elif self.levels_open:
             edit_parameter = self.levels_edit_parameter - 1
             if edit_parameter > 2:
@@ -1283,7 +1329,6 @@ class ModernSlideShower(mglw.WindowConfig):
         self.round_vao.render(self.gl_program_round)
         self.render_ui(time)
 
-
     def format_bytes(self, size):
         # 2**10 = 1024
         power = 2 ** 10
@@ -1333,13 +1378,22 @@ class ModernSlideShower(mglw.WindowConfig):
             imgui.set_next_window_position(io.display_size.x * .5, io.display_size.y * 0.5, 1, pivot_x=.5, pivot_y=0.5)
             imgui.set_next_window_bg_alpha(.9)
             imgui.begin("Settings", False, in_cenral_wnd_flags)
-            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 1), .2, .2)
-            imgui.slider_float("Speed of transition between images", self.transition_speed, 0.001, 1, '%.4f', 4)
-            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 2), .2, .2)
-            imgui.slider_float("Zoom of newly shown image", self.starting_zoom_factor, 0, 5, '%.3f', 4)
-            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 3), .2, .2)
-            imgui.slider_float("Hide image borders", self.hide_borders, 0, 1, '%.3f', 2)
-            imgui.pop_style_color(3)
+
+            for key in self.configs.keys():
+                imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == key), .2, .2)
+                imgui.slider_float(self.config_desriptions[key], self.configs[key], self.config_formats[key][0],
+                                   self.config_formats[key][1],
+                                   self.config_formats[key][2],
+                                   self.config_formats[key][3])
+                imgui.pop_style_color()
+
+            # imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 1), .2, .2)
+            # imgui.slider_float("Speed of transition between images", self.configs[self.transition_speed], 0.001, 1, '%.4f', 4)
+            # imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 2), .2, .2)
+            # imgui.slider_float("Zoom of newly shown image", self.configs[self.starting_zoom_factor], 0, 5, '%.3f', 4)
+            # imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 3), .2, .2)
+            # imgui.slider_float("Hide image borders", self.configs[self.hide_borders], 0, 1, '%.3f', 2)
+            # imgui.pop_style_color(3)
             imgui.end()
 
         # Levels window
@@ -1385,11 +1439,12 @@ class ModernSlideShower(mglw.WindowConfig):
 
             imgui.columns(6)
             add_cells_with_text(["", " min", " max", "gamma", " min", " max"], [self.levels_edit_group * 2,
-                                                                           self.levels_edit_group * 2 + 1])
+                                                                                self.levels_edit_group * 2 + 1])
 
             def add_grid_elements(row_name, row_number):
                 # active_column = self.mouse_direct_edit + self.pressed_mouse - 1
-                active_columns = [self.levels_edit_group * 3, self.levels_edit_group * 3 + 1, self.levels_edit_group * 3 + 2]
+                active_columns = [self.levels_edit_group * 3, self.levels_edit_group * 3 + 1,
+                                  self.levels_edit_group * 3 + 2]
                 # if (self.mouse_direct_edit == 3 and self.pressed_mouse == 0) or self.mouse_direct_edit == 0:
                 #     active_column = - 1
                 # bg_color = (.2, .2, .2)
