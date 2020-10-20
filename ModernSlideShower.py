@@ -17,6 +17,12 @@ import sys
 import random
 
 # from scipy.interpolate import BSpline
+HIDE_BORDERS = 1
+TRANSITION_SPEED = 2
+INTER_BLUR = 3
+STARTING_ZOOM_FACTOR = 4
+
+BUTTON_STICKING_TIME = 0.3
 
 
 #    todo: find memory leaks
@@ -284,35 +290,32 @@ class ModernSlideShower(mglw.WindowConfig):
     round_indicator_radius = 40
     last_image_folder = None
 
-    # Image transition
-    # transition_speed = .02
-    # hide_borders = 0.02
-    # starting_zoom_factor = 1.03
     transition_center = (.4, .4)
 
-    transition_speed = 1
-    hide_borders = 2
-    starting_zoom_factor = 3
-    overblur = 4
+    # hide_borders = 1
+    # transition_speed = 2
+    # starting_zoom_factor = 3
+    # inter_blur = 4
+    # spd = 5
 
     configs = {
-        transition_speed: .02,
-        hide_borders: 0.02,
-        starting_zoom_factor: 1.03,
-        overblur: 1.
+        HIDE_BORDERS:           0.02,
+        TRANSITION_SPEED:       .15,
+        INTER_BLUR:             10.,
+        STARTING_ZOOM_FACTOR:   1.03,
     }
-    config_desriptions = {
-        transition_speed: "Speed of transition between images",
-        hide_borders: "Hide image borders",
-        starting_zoom_factor: "Zoom of newly shown image",
-        overblur:      "overblur"
+    config_descriptions = {
+        HIDE_BORDERS:           "Hide image borders",
+        TRANSITION_SPEED:       "Speed of transition between images",
+        INTER_BLUR:             "Blur during transition",
+        STARTING_ZOOM_FACTOR:   "Zoom of newly shown image",
     }
 
     config_formats = {
-        transition_speed:     (0.001, 1, '%.4f', 4),
-        hide_borders:         (0, 1, '%.3f', 2),
-        starting_zoom_factor: (0, 5, '%.3f', 4),
-        overblur: (1, 100, '%.1f', 1.5),
+        HIDE_BORDERS:           (0, 1, '%.3f', 2),
+        TRANSITION_SPEED:       (0.01, 1, '%.3f', 2),
+        INTER_BLUR:             (0, 1000, '%.1f', 4),
+        STARTING_ZOOM_FACTOR:   (0, 5, '%.3f', 4),
     }
 
     last_key_press_time = 0
@@ -699,11 +702,11 @@ class ModernSlideShower(mglw.WindowConfig):
         # if self.last_image_folder is not None:
         current_folder = os.path.dirname(self.image_list[self.image_index])
         if current_folder != self.last_image_folder:
-            self.schedule_pop_message(8, 6, current_folder=current_folder)
+            self.schedule_pop_message(8, 5, current_folder=current_folder)
         self.last_image_folder = current_folder
         if self.image_index == 0:
             self.schedule_pop_message(7)
-            self.pic_zoom = self.pic_zoom_future * (self.configs[self.starting_zoom_factor] - .5) ** -1
+            self.pic_zoom = self.pic_zoom_future * (self.configs[STARTING_ZOOM_FACTOR] - .5) ** -1
             self.update_position()
         else:
             self.unschedule_pop_message(7)
@@ -807,7 +810,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.pic_position_future += correction_vector / 10
 
         if self.transition_stage < 1:    # todo: make so that transition_stage doesn't lag behind mouse_move_cumulative
-            transition_step = self.configs[self.transition_speed] * (1.2 - self.transition_stage)
+            transition_step = self.configs[TRANSITION_SPEED] ** 2 * (1.2 - self.transition_stage)
             self.transition_stage += transition_step / (1 - abs(self.mouse_move_cumulative) / 100)
             # print(self.transition_stage)
             if self.transition_stage > .99999:
@@ -901,7 +904,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_pic[self.program_id]['hide_borders'] = 0
         self.picture_vertices.render(self.gl_program_pic[self.program_id])
         self.gl_program_pic[self.program_id]['one_by_one'] = False
-        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[self.hide_borders]
+        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[HIDE_BORDERS]
         self.ctx.screen.use()
         new_texture.use(5)
         self.current_texture = new_texture
@@ -944,7 +947,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.program_id = 1 - self.program_id
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
-        self.pic_zoom = self.pic_zoom_future * self.configs[self.starting_zoom_factor]
+        self.pic_zoom = self.pic_zoom_future * self.configs[STARTING_ZOOM_FACTOR]
         self.pic_position = np.array([0., 0.])
         self.pic_position_future = np.array([0., 0.])
         self.pic_position_speed = np.array([0., 0.])
@@ -1077,9 +1080,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_pic[self.program_id]['wnd_size'] = self.wnd.size
         self.gl_program_pic[self.program_id]['show_amount'] = self.transition_stage
         self.gl_program_pic[self.program_id]['transparency'] = 0
-        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[self.hide_borders]
-        # self.gl_program_pic[self.program_id]['overblur'] = -math.log2(1 - self.configs[self.overblur]) * 5
-        self.gl_program_pic[self.program_id]['overblur'] = self.configs[self.overblur]
+        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[HIDE_BORDERS]
+        self.gl_program_pic[self.program_id]['inter_blur'] = self.configs[INTER_BLUR]
         self.gl_program_pic[self.program_id]['transition_center'] = self.transition_center
         self.gl_program_pic[1 - self.program_id]['transparency'] = self.transition_stage
         self.gl_program_round['wnd_size'] = self.wnd.size
@@ -1104,14 +1106,9 @@ class ModernSlideShower(mglw.WindowConfig):
                                                                   self.config_formats[self.settings_parameter][0],
                                                                   self.config_formats[self.settings_parameter][1])
             self.update_position()
-
-        # if self.settings_parameter == 1:
-        #     self.configs[self.transition_speed] = self.restrict(self.configs[self.transition_speed] * (1 - amount), 0.001, 1)
-        # elif self.settings_parameter == 2:
-        #     self.configs[self.starting_zoom_factor] = self.restrict(self.configs[self.starting_zoom_factor] * (1 - amount), 0.0001, 5)
-        # elif self.settings_parameter == 3:
-        #     self.configs[self.hide_borders] = self.restrict(self.configs[self.hide_borders] * (1 - amount) - amount / 1000, 0, 1)
-        #     self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[self.hide_borders]
+            if self.settings_parameter == INTER_BLUR:
+                self.gl_program_pic[self.program_id]['transparency'] = .5
+                self.run_move_image_inertial = False
 
         elif self.levels_open:
             edit_parameter = self.levels_edit_parameter - 1
@@ -1184,6 +1181,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.pressed_mouse = self.pressed_mouse & ~button_code
         if self.levels_edit_parameter > 0:
             self.levels_edit_parameter = 0
+        self.run_move_image_inertial = True
 
     def unicode_char_entered(self, char):
         pass
@@ -1280,8 +1278,6 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.save_current_texture(False)
                 elif key == self.wnd.keys.P:
                     self.settings_parameter = 0 if self.settings_parameter else 1
-                # elif key == self.wnd.keys.S:
-                #     self.save_current_texture(modifiers.shift)
 
         elif action == self.wnd.keys.ACTION_RELEASE:
             if key == self.wnd.keys.SPACE:
@@ -1291,7 +1287,7 @@ class ModernSlideShower(mglw.WindowConfig):
             elif key == self.wnd.keys.LEFT:
                 self.run_key_flipping = 0
             elif key == 59:  # [;]
-                if self.timer.time - self.last_key_press_time > .5:
+                if self.timer.time - self.last_key_press_time > BUTTON_STICKING_TIME:
                     self.levels_enabled = not self.levels_enabled
                     self.update_position()
 
@@ -1368,7 +1364,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
         style.alpha = 1
         line_height = imgui.get_text_line_height_with_spacing()
-        # im_gui_window_flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_MOVE
         in_cenral_wnd_flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | \
                               imgui.WINDOW_NO_INPUTS | imgui.WINDOW_NO_COLLAPSE
         im_gui_window_flags = in_cenral_wnd_flags | imgui.WINDOW_NO_TITLE_BAR
@@ -1381,19 +1376,12 @@ class ModernSlideShower(mglw.WindowConfig):
 
             for key in self.configs.keys():
                 imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == key), .2, .2)
-                imgui.slider_float(self.config_desriptions[key], self.configs[key], self.config_formats[key][0],
+                imgui.slider_float(self.config_descriptions[key], self.configs[key], self.config_formats[key][0],
                                    self.config_formats[key][1],
                                    self.config_formats[key][2],
                                    self.config_formats[key][3])
                 imgui.pop_style_color()
 
-            # imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 1), .2, .2)
-            # imgui.slider_float("Speed of transition between images", self.configs[self.transition_speed], 0.001, 1, '%.4f', 4)
-            # imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 2), .2, .2)
-            # imgui.slider_float("Zoom of newly shown image", self.configs[self.starting_zoom_factor], 0, 5, '%.3f', 4)
-            # imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.settings_parameter == 3), .2, .2)
-            # imgui.slider_float("Hide image borders", self.configs[self.hide_borders], 0, 1, '%.3f', 2)
-            # imgui.pop_style_color(3)
             imgui.end()
 
         # Levels window
@@ -1442,12 +1430,8 @@ class ModernSlideShower(mglw.WindowConfig):
                                                                                 self.levels_edit_group * 2 + 1])
 
             def add_grid_elements(row_name, row_number):
-                # active_column = self.mouse_direct_edit + self.pressed_mouse - 1
                 active_columns = [self.levels_edit_group * 3, self.levels_edit_group * 3 + 1,
                                   self.levels_edit_group * 3 + 2]
-                # if (self.mouse_direct_edit == 3 and self.pressed_mouse == 0) or self.mouse_direct_edit == 0:
-                #     active_column = - 1
-                # bg_color = (.2, .2, .2)
                 letters_blue = 1
                 if self.levels_edit_band == row_number:
                     letters_blue = .5
