@@ -15,6 +15,7 @@ import math
 import os
 import sys
 import random
+import collections
 
 # from scipy.interpolate import BSpline
 HIDE_BORDERS = 1
@@ -32,7 +33,7 @@ JPEGTRAN_OPTIONS = ' -optimize -rotate {0} -trim -copy all -outfile "{1}" "{1}"'
 IMAGE_FILE_TYPES = ('jpg', 'png', 'jpeg', 'gif', 'tif', 'tiff')
 EMPTY_IMAGE_LIST = "Empty.jpg"
 SAVE_FOLDER = ".\\SaveFolder\\"
-
+Point = collections.namedtuple('Point', ['x', 'y'])
 
 #    todo: show compression and decompression times when saving/loading lists
 #    todo: lossy image cropping in full edit mode
@@ -55,8 +56,11 @@ SAVE_FOLDER = ".\\SaveFolder\\"
 #    todo: support for large images by splitting them into smaller subtextures
 #    todo: seam resizing
 #    todo: set settings change speeds in setting settings
-#    todo: live mandelbrot
+#    todo: add 3-4 user-editable parameters to mandelbrot_mode
+#    todo: add other julia sets in mandelbrot_mode
 
+#    todone: make mandelbrot_mode eye candy
+#    todone: basic live mandelbrot when no images found
 #    todone: decompress list file
 #    todone: compress list file
 #    todone: generalize settings
@@ -278,16 +282,21 @@ class ModernSlideShower(mglw.WindowConfig):
     dir_to_file = []
     file_to_dir = []
 
+    mandelbrot_coords = np.array([-1.784, -0.000196, -1.7833, 0.000196])
+
+    image_original_size = Point(0, 0)
+
     common_path = ""
     im_object = Image
     pic_position = np.array([0., 0.])
-    pic_position_future = np.array([0., 0.])
-    pic_position_speed = np.array([0., 0.])
+    pic_position_future = np.array([0., 0.], dtype=np.float64)
+    pic_position_speed = np.array([0., 0.], dtype=np.float64)
     pic_zoom = .5
     pic_zoom_future = 1.
     pic_angle = 0.
     pic_angle_future = 0.
     gl_program_round = moderngl.program
+    gl_program_mandel = moderngl.program
     gl_program_pic = [moderngl.program] * 2
     program_id = 0
     image_texture = moderngl.Texture
@@ -306,6 +315,8 @@ class ModernSlideShower(mglw.WindowConfig):
     last_image_folder = None
 
     transition_center = (.4, .4)
+
+    mandelbrot_mode = False
 
     configs = {
         HIDE_BORDERS: 0.02,
@@ -368,6 +379,8 @@ class ModernSlideShower(mglw.WindowConfig):
     levels_edit_parameter = 0
     levels_edit_group = 0
 
+    key_picture_movement = [False] * 6
+
     cropping_mode = 0
 
     transition_stage = 1.
@@ -376,7 +389,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
     show_image_info = 0
     current_image_file_size = 0
-
 
     central_message_showing = False
     central_message = ["",
@@ -443,16 +455,21 @@ class ModernSlideShower(mglw.WindowConfig):
 
         picture_program_text = picture_glsl
         round_program_text = round_glsl
+        mandel_program_text = ""
         if os.path.isfile('picture.glsl'):
             picture_program_text = open('picture.glsl', 'r').read()
         if os.path.isfile('round.glsl'):
             round_program_text = open('round.glsl', 'r').read()
+        if os.path.isfile('mandelbrot.glsl'):
+            mandel_program_text = open('mandelbrot.glsl', 'r').read()
 
         dummy_program_description = moderngl_window.meta.ProgramDescription()
         shaders = program.ProgramShaders.from_single(dummy_program_description, picture_program_text)
         self.gl_program_pic = [shaders.create(), shaders.create()]
         shaders = program.ProgramShaders.from_single(dummy_program_description, round_program_text)
         self.gl_program_round = shaders.create()
+        shaders = program.ProgramShaders.from_single(dummy_program_description, mandel_program_text)
+        self.gl_program_mandel = shaders.create()
 
         self.histo_texture = self.ctx.texture((256, 5), 4)
         self.histo_texture.bind_to_image(7, read=True, write=True)
@@ -465,11 +482,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.find_jpegtran()
         self.get_images()
-        # old_list = self.file_list
-        # self.file_list = self.file_list.copy()
-        # old_list = self.dir_list
-        # self.dir_list = self.dir_list.copy()
-        # del old_list
 
         if self.image_count == 0:
             self.central_message_showing = 2
@@ -539,8 +551,8 @@ class ModernSlideShower(mglw.WindowConfig):
         dir_arguments = []
         if len(sys.argv) > 1:
             for argument in sys.argv[1:]:
-                if os.path.isdir(argument.rstrip('"')):
-                    dir_arguments.append(os.path.abspath(argument.rstrip('"')))
+                if os.path.isdir(argument.rstrip('\\"')):
+                    dir_arguments.append(os.path.abspath(argument.rstrip('\\"')))
                 if os.path.isfile(argument):
                     file_arguments.append(os.path.abspath(argument))
 
@@ -560,6 +572,8 @@ class ModernSlideShower(mglw.WindowConfig):
         print(self.image_count, "total images found")
 
     def find_common_path(self):
+        if len(self.dir_list) == 0:
+            return
         if len(self.dir_list) > 10000:
             self.common_path = os.path.commonpath(self.dir_list[::len(self.dir_list) // 100])
         else:
@@ -695,6 +709,8 @@ class ModernSlideShower(mglw.WindowConfig):
         if index is None:
             index = self.new_image_index
         dir_index = self.file_to_dir[index]
+        if dir_index == -1:
+            return EMPTY_IMAGE_LIST
         dir_name = self.dir_list[dir_index]
         file_name = self.file_list[index]
         img_path = os.path.join(dir_name, file_name)
@@ -723,13 +739,6 @@ class ModernSlideShower(mglw.WindowConfig):
         except (KeyError, AttributeError, TypeError, IndexError):
             return im
 
-    def generate_dummy_image(self):
-        bands = []
-        for band in range(3):
-            bands.append(Image.effect_mandelbrot((1920, 1080), (-1.784, -0.000196, -1.7833, 0.000196), 350 - band * 50))
-        dummy_image = Image.merge("RGB", bands)
-        return dummy_image
-
     def release_texture(self, texture):
         if type(texture) is moderngl.texture.Texture:
             try:
@@ -737,34 +746,43 @@ class ModernSlideShower(mglw.WindowConfig):
             except Exception:
                 pass
 
-    def load_image(self):
-        if not os.path.isfile(self.get_file_path()):
-            if self.file_list[self.new_image_index] != EMPTY_IMAGE_LIST:
-                self.find_next_existing_image()
+    def load_image(self, mandelbrot=False):
         image_path = self.get_file_path()
-        self.image_texture_old = self.image_texture
-        self.current_texture_old = self.current_texture
-        try:
-            with Image.open(image_path) as img_buffer:
-                if img_buffer.mode == "RGB":
-                    self.im_object = self.reorient_image(img_buffer)
-                else:
-                    self.im_object = self.reorient_image(img_buffer).convert(mode="RGB")
-                image_bytes = self.im_object.tobytes()
-                self.current_image_file_size = os.stat(image_path).st_size
-        except Exception as e:
-            # todo: handle this with new image db
-            if self.file_list[self.new_image_index] == EMPTY_IMAGE_LIST:
-                if type(self.im_object) is not Image.Image:
-                    self.im_object = self.generate_dummy_image()
-                image_bytes = self.im_object.tobytes()
+        if not os.path.isfile(image_path):
+            if image_path == EMPTY_IMAGE_LIST:
+                mandelbrot = True
             else:
-                print("Error reading ", self.get_file_path(), e)
-                self.find_next_existing_image()
-                self.load_image()
+                self.load_next_existing_image()
                 return
 
-        self.image_texture = self.ctx.texture((self.im_object.width, self.im_object.height), 3, image_bytes)
+        if mandelbrot:
+            # self.im_object = self.generate_dummy_image()
+            # image_bytes = self.im_object.tobytes()
+            # self.image_original_size = Point(self.im_object.width, self.im_object.height)
+            self.image_original_size = Point(self.wnd.width, self.wnd.height)
+            image_bytes = np.empty(self.wnd.width * self.wnd.height * 3, dtype=np.uint8)
+            self.mandelbrot_mode = True
+            self.show_image_info = 1
+        else:
+            self.mandelbrot_mode = False
+            try:
+                with Image.open(image_path) as img_buffer:
+                    if img_buffer.mode == "RGB":
+                        self.im_object = self.reorient_image(img_buffer)
+                    else:
+                        self.im_object = self.reorient_image(img_buffer).convert(mode="RGB")
+                    image_bytes = self.im_object.tobytes()
+                    self.image_original_size = Point(self.im_object.width, self.im_object.height)
+                    self.current_image_file_size = os.stat(image_path).st_size
+            except Exception as e:
+                print("Error reading ", self.get_file_path(), e)
+                self.load_next_existing_image()
+                return
+
+        self.image_texture_old = self.image_texture
+        self.current_texture_old = self.current_texture
+
+        self.image_texture = self.ctx.texture((self.image_original_size.x, self.image_original_size.y), 3, image_bytes)
         self.image_texture.repeat_x = False
         self.image_texture.repeat_y = False
         self.image_texture.build_mipmaps()
@@ -774,21 +792,42 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.wnd.title = "ModernSlideShower: " + image_path
         self.reset_pic_position()
-        # if self.last_image_folder is not None:
-        # current_folder = os.path.dirname(self.image_list[self.image_index])
-        current_folder = self.dir_list[self.file_to_dir[self.image_index]]
+
+        current_folder = self.file_to_dir[self.image_index]
 
         if current_folder != self.last_image_folder:
-            self.schedule_pop_message(8, 5, current_folder=current_folder)
+            self.schedule_pop_message(8, 5, current_folder=self.dir_list[current_folder:current_folder + 1])
         self.last_image_folder = current_folder
-        if self.image_index == 0:
+        if self.image_index == 0 and not mandelbrot:
             self.schedule_pop_message(7)
             self.pic_zoom = self.pic_zoom_future * (self.configs[STARTING_ZOOM_FACTOR] - .5) ** -1
             self.update_position()
         else:
             self.unschedule_pop_message(7)
 
-    def find_next_existing_image(self):
+    # def generate_mandelbrot_image(self):
+    #
+    # def generate_dummy_image(self):
+    #     bands = []
+    #     center_x = (self.mandelbrot_coords[0] + self.mandelbrot_coords[2]) / 2
+    #     center_y = (self.mandelbrot_coords[1] + self.mandelbrot_coords[3]) / 2
+    #     m_width = self.mandelbrot_coords[2] - self.mandelbrot_coords[0]
+    #     m_height = self.mandelbrot_coords[3] - self.mandelbrot_coords[1]
+    #
+    #     borders = self.mandelbrot_coords - [center_x, center_y, center_x, center_y]
+    #     wnd_width, wnd_height = self.wnd.size
+    #     zoom_null = min(wnd_width / 1920, wnd_height / 1080)
+    #     zoom_change = self.pic_zoom / zoom_null
+    #     borders /= zoom_change
+    #     center_x -= self.pic_position[0] * m_width / wnd_width / 2
+    #     center_y += self.pic_position[1] * m_height / wnd_height / 2
+    #     self.mandelbrot_coords = borders + [center_x, center_y, center_x, center_y]
+    #     for band in range(3):
+    #         bands.append(Image.effect_mandelbrot((1920, 1080), self.mandelbrot_coords, 350 - band * 50))
+    #     dummy_image = Image.merge("RGB", bands)
+    #     return dummy_image
+
+    def load_next_existing_image(self):
         start_number = self.new_image_index
         increment = 1
         if self.image_index - self.new_image_index == 1:
@@ -797,10 +836,11 @@ class ModernSlideShower(mglw.WindowConfig):
             self.new_image_index = (self.new_image_index + increment) % self.image_count
             if start_number == self.new_image_index:
                 self.file_list[self.new_image_index] = EMPTY_IMAGE_LIST
-                self.central_message_showing = 3
+                # self.central_message_showing = 3
                 break
             if os.path.isfile(self.get_file_path()):
-                return
+                break
+        self.load_image()
 
     def move_file_out(self, do_copy=False):
         full_name = self.get_file_path(self.image_index)
@@ -856,11 +896,11 @@ class ModernSlideShower(mglw.WindowConfig):
         remainder = self.pic_angle_future % 90
         self.pic_angle_future = round(self.pic_angle_future - remainder + 90 * (left - (not left) * (remainder == 0)))
         if self.pic_angle_future % 180:
-            self.pic_zoom_future = min(self.wnd.height / self.current_texture.width,
-                                       self.wnd.width / self.current_texture.height)
+            self.pic_zoom_future = min(self.window_size[1] / self.current_texture.width,
+                                       self.window_size[0] / self.current_texture.height)
         else:
-            self.pic_zoom_future = min(self.wnd.width / self.current_texture.width,
-                                       self.wnd.height / self.current_texture.height)
+            self.pic_zoom_future = min(self.window_size[0] / self.current_texture.width,
+                                       self.window_size[1] / self.current_texture.height)
         self.move_image()
 
         if self.pic_angle_future % 360:  # not at original angle
@@ -870,21 +910,32 @@ class ModernSlideShower(mglw.WindowConfig):
             self.unschedule_pop_message(2)
 
     def check_if_image_in_window(self):
-        rad_angle = math.radians(self.pic_angle)
-        rotation_matrix = np.array(((np.cos(rad_angle), -np.sin(rad_angle)),
-                                    (np.sin(rad_angle), np.cos(rad_angle))))
-
-        rotated_displacement = self.pic_position.dot(rotation_matrix)
         correction_vector = np.array([0., 0.])
-        if rotated_displacement[0] > self.current_texture.width:
-            correction_vector[0] -= rotated_displacement[0] - self.current_texture.width
-        if rotated_displacement[0] + self.current_texture.width < 0:
-            correction_vector[0] -= rotated_displacement[0] + self.current_texture.width
-        if rotated_displacement[1] > self.current_texture.height:
-            correction_vector[1] -= rotated_displacement[1] - self.current_texture.height
-        if rotated_displacement[1] + self.current_texture.height < 0:
-            correction_vector[1] -= rotated_displacement[1] + self.current_texture.height
-        correction_vector = correction_vector.dot(rotation_matrix.T)
+        if self.mandelbrot_mode:
+            border = max(self.window_size[0], self.window_size[1]) * 1.5
+            x_im = self.pic_position[0] - .5 * max(self.window_size[0], self.window_size[1])
+            if abs(x_im) > border:
+                correction_vector[0] = math.copysign(border, x_im) - x_im
+
+            if abs(self.pic_position[1]) > border:
+                correction_vector[1] = math.copysign(border, self.pic_position[1]) - self.pic_position[1]
+
+        else:
+            rad_angle = math.radians(self.pic_angle)
+            rotation_matrix = np.array(((np.cos(rad_angle), -np.sin(rad_angle)),
+                                        (np.sin(rad_angle), np.cos(rad_angle))))
+
+            rotated_displacement = self.pic_position.dot(rotation_matrix)
+
+            if rotated_displacement[0] > self.current_texture.width:
+                correction_vector[0] -= rotated_displacement[0] - self.current_texture.width
+            if rotated_displacement[0] + self.current_texture.width < 0:
+                correction_vector[0] -= rotated_displacement[0] + self.current_texture.width
+            if rotated_displacement[1] > self.current_texture.height:
+                correction_vector[1] -= rotated_displacement[1] - self.current_texture.height
+            if rotated_displacement[1] + self.current_texture.height < 0:
+                correction_vector[1] -= rotated_displacement[1] + self.current_texture.height
+            correction_vector = correction_vector.dot(rotation_matrix.T)
         return correction_vector, abs(np.linalg.norm(correction_vector))
 
     def move_image_inertial(self, dt):
@@ -905,18 +956,18 @@ class ModernSlideShower(mglw.WindowConfig):
         self.pic_position_speed *= .95
         distance_to_ghost = np.log(1 + np.linalg.norm(self.pic_position - self.pic_position_future))
         abs_speed = np.log(1 + np.linalg.norm(self.pic_position_speed))
-        sp_sum = distance_to_ghost + abs_speed
+        sp_sum = distance_to_ghost * self.pic_zoom_future + abs_speed
         sp_sum2 = .5 + .5 / (math.copysign(1, sp_sum) + 1 / (sp_sum + .01))
         self.pic_position = self.pic_position * (1 - sp_sum2) + self.pic_position_future * sp_sum2
 
         scale_disproportion = abs(self.pic_zoom_future / self.pic_zoom - 1) ** .7 * .2
-        pic_zoom_new = self.pic_zoom * (
-                1 - scale_disproportion * self.transition_stage ** 2) + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
+        pic_zoom_new = self.pic_zoom * (1 - scale_disproportion * self.transition_stage ** 2) \
+                       + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
         if pic_zoom_new / self.pic_zoom < 1:
             centerting_factor = 1 - scale_disproportion / self.pic_zoom / 100
             self.pic_position_future = self.pic_position_future * centerting_factor
             if self.levels_open:
-                self.pic_position_future -= np.array((self.wnd.width / 5, 0)) * (1 - centerting_factor)
+                self.pic_position_future -= np.array((self.window_size[0] / 5, 0)) * (1 - centerting_factor)
 
         self.pic_zoom = pic_zoom_new
 
@@ -928,8 +979,11 @@ class ModernSlideShower(mglw.WindowConfig):
         if sp_sum + scale_disproportion * 20 + rotation_disproportion + (self.transition_stage < 1) < .1:
             self.run_move_image_inertial = False
 
-    def move_image(self, d_coord=(0., 0.)):
-        self.pic_position_future += d_coord
+    def move_image(self, d_coord=np.array([0., 0.])):
+        # self.pic_position_future += d_coord / 5
+        if self.mandelbrot_mode:
+            #  todo: make this window_size-relative
+            d_coord /= 3
         self.pic_position_speed += d_coord
         self.pic_position_speed *= .97
         self.run_move_image_inertial = True
@@ -1039,15 +1093,25 @@ class ModernSlideShower(mglw.WindowConfig):
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
         self.pic_zoom = self.pic_zoom_future * self.configs[STARTING_ZOOM_FACTOR]
         self.pic_position = np.array([0., 0.])
-        self.pic_position_future = np.array([0., 0.])
-        self.pic_position_speed = np.array([0., 0.])
+        self.pic_position_future = np.array([0., 0.], dtype=np.float64)
+        self.pic_position_speed = np.array([0., 0.], dtype=np.float64)
         self.pic_angle = 0.
         self.pic_angle_future = 0.
         self.transition_stage = 0.
         self.transition_center = (.3 + .4 * random.random(), .3 + .4 * random.random())
         self.run_move_image_inertial = True
 
+        if self.mandelbrot_mode:
+            self.pic_angle_future = - 30
+
         self.update_position()
+
+    def move_picture_with_key(self, time_interval):
+        dx = time_interval * (self.key_picture_movement[1] - self.key_picture_movement[3])
+        dy = time_interval * (self.key_picture_movement[0] - self.key_picture_movement[2])
+        d_coord = np.array([dx, -dy], dtype=np.float64) / self.pic_zoom * 100
+        self.pic_zoom_future *= 1 + (time_interval * (self.key_picture_movement[5] - self.key_picture_movement[4]))
+        self.move_image(d_coord)
 
     def unschedule_pop_message(self, pop_id):
         for item in self.pop_db:
@@ -1094,10 +1158,6 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.levels_open:
             if abs(self.virtual_cursor_position[0]) > 200:
                 self.levels_edit_group = 1 if self.virtual_cursor_position[0] > 0 else 0
-                # self.levels_edit_group += 1 if self.virtual_cursor_position[0] > 0 else -1
-                # self.levels_edit_group = self.restrict(self.levels_edit_group, 0, 1)
-                # self.levels_edit_parameter += 1 if self.virtual_cursor_position[0] > 0 else -1
-                # self.levels_edit_parameter = self.restrict(self.levels_edit_parameter, 0, 4)
                 self.virtual_cursor_position *= 0
             if abs(self.virtual_cursor_position[1]) > 150:
                 self.levels_edit_band += 1 if self.virtual_cursor_position[1] > 0 else -1
@@ -1171,15 +1231,22 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_pic[self.program_id]['show_amount'] = self.transition_stage
         self.gl_program_pic[self.program_id]['transparency'] = 0
         self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[HIDE_BORDERS]
-        if self.cropping_mode:
-            self.gl_program_pic[self.program_id]['hide_borders'] = 0
         self.gl_program_pic[self.program_id]['inter_blur'] = self.configs[INTER_BLUR]
         self.gl_program_pic[self.program_id]['transition_center'] = self.transition_center
         self.gl_program_pic[1 - self.program_id]['transparency'] = self.transition_stage
+        if self.cropping_mode:
+            self.gl_program_pic[self.program_id]['hide_borders'] = 0
         self.gl_program_round['wnd_size'] = self.wnd.size
         self.gl_program_round['displacement'] = tuple(self.round_indicator_cener_pos)
         self.gl_program_round['round_size'] = self.round_indicator_radius
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+
+        self.gl_program_mandel['wnd_size'] = self.wnd.size
+        self.gl_program_mandel['pic_position'] = tuple(
+            self.pic_position / max(self.window_size[0], self.window_size[1]))
+
+        self.gl_program_mandel['zoom'] = self.pic_zoom
+        self.gl_program_mandel['complexity'] = self.pic_angle / 10
 
     def resize(self, width: int, height: int):
         self.imgui.resize(width, height)
@@ -1228,9 +1295,6 @@ class ModernSlideShower(mglw.WindowConfig):
             self.mouse_circle_tracking(dx, dy)
 
     def mouse_drag_event(self, x, y, dx, dy):
-        # if self.mouse_direct_edit:
-        #     self.change_levels((dy - dx) / 1500)
-        #     return
         if self.setting_active or (self.levels_open and self.levels_enabled):
             self.change_settings((dy * 5 - dx) / 1500)
             return
@@ -1247,6 +1311,10 @@ class ModernSlideShower(mglw.WindowConfig):
             self.unschedule_pop_message(2)
 
     def mouse_scroll_event(self, x_offset, y_offset):
+        if self.mandelbrot_mode:
+            self.pic_zoom_future *= 1.3 if y_offset < 0 else .7
+            self.move_image()
+            return
         self.run_flip_once = 1 if y_offset < 0 else -1
 
     def mouse_press_event(self, x, y, button):
@@ -1286,6 +1354,27 @@ class ModernSlideShower(mglw.WindowConfig):
                 if key == self.wnd.keys.TAB:
                     self.setting_active = (self.setting_active + 1) % 4
 
+            elif self.mandelbrot_mode:
+                if key == self.wnd.keys.RIGHT:
+                    self.key_picture_movement[3] = True
+                    return
+                elif key == self.wnd.keys.LEFT:
+                    self.key_picture_movement[1] = True
+                    return
+                elif key == self.wnd.keys.UP:
+                    self.key_picture_movement[0] = True
+                    return
+                elif key == self.wnd.keys.DOWN:
+                    self.key_picture_movement[2] = True
+                    return
+                elif key in [self.wnd.keys.MINUS, 65453]:
+                    self.key_picture_movement[4] = True
+                    return
+                elif key in [61, 65451]:  # +
+                    self.key_picture_movement[5] = True
+                    return
+                print(key)
+
             elif self.levels_open:
                 if key == 59:  # ;
                     self.levels_enabled = not self.levels_enabled
@@ -1314,6 +1403,26 @@ class ModernSlideShower(mglw.WindowConfig):
                         self.levels_edit_band = 3
                 if key == self.wnd.keys.ENTER:
                     self.apply_levels()
+                    return
+
+            if modifiers.shift:
+                if key == self.wnd.keys.RIGHT:
+                    self.key_picture_movement[3] = True
+                    return
+                elif key == self.wnd.keys.LEFT:
+                    self.key_picture_movement[1] = True
+                    return
+                elif key == self.wnd.keys.UP:
+                    self.key_picture_movement[0] = True
+                    return
+                elif key == self.wnd.keys.DOWN:
+                    self.key_picture_movement[2] = True
+                    return
+                elif key == self.wnd.keys.MINUS:
+                    self.key_picture_movement[4] = True
+                    return
+                elif key in [61, 65451]:  # +
+                    self.key_picture_movement[5] = True
                     return
 
             if modifiers.ctrl:
@@ -1346,7 +1455,9 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.show_image_info = (self.show_image_info + 1) % 2
                 elif key == self.wnd.keys.C:
                     self.move_file_out(do_copy=True)
-                elif key == self.wnd.keys.M:
+                elif key == self.wnd.keys.T:
+                    self.load_image(mandelbrot=True)
+                elif key in [self.wnd.keys.M, self.wnd.keys.BACKSLASH]:
                     self.move_file_out()
                 elif key == self.wnd.keys.PAGE_UP:
                     self.first_directory_image(-1)
@@ -1384,6 +1495,21 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.setting_active = 0 if self.setting_active else 1
 
         elif action == self.wnd.keys.ACTION_RELEASE:
+            if self.mandelbrot_mode or modifiers.shift:
+                if key == self.wnd.keys.RIGHT:
+                    self.key_picture_movement[3] = False
+                elif key == self.wnd.keys.LEFT:
+                    self.key_picture_movement[1] = False
+                elif key == self.wnd.keys.UP:
+                    self.key_picture_movement[0] = False
+                elif key == self.wnd.keys.DOWN:
+                    self.key_picture_movement[2] = False
+                elif key in [self.wnd.keys.MINUS, 65453]:
+                    self.key_picture_movement[4] = False
+                elif key in [61, 65451]:  # +
+                    self.key_picture_movement[5] = False
+                return
+
             if key == self.wnd.keys.SPACE:
                 self.run_key_flipping = 0
             elif key == self.wnd.keys.RIGHT:
@@ -1410,6 +1536,8 @@ class ModernSlideShower(mglw.WindowConfig):
             self.flip_once()
         if not (self.run_key_flipping == 0):
             self.key_flipping(time)
+        if True in self.key_picture_movement:
+            self.move_picture_with_key(frame_time)
         self.pop_message_dispatcher(time)
         if self.autoflip_speed != 0 and self.pressed_mouse == 0:
             self.do_auto_flip()
@@ -1417,13 +1545,16 @@ class ModernSlideShower(mglw.WindowConfig):
         self.wnd.clear()
         self.read_and_clear_histo()
 
-        if self.transition_stage < 1:
-            if type(self.image_texture_old) is moderngl.texture.Texture:
-                self.current_texture_old.use(5)
-                self.picture_vertices.render(self.gl_program_pic[1 - self.program_id])
+        if self.mandelbrot_mode:
+            self.picture_vertices.render(self.gl_program_mandel)
+        else:
+            if self.transition_stage < 1:
+                if type(self.image_texture_old) is moderngl.texture.Texture:
+                    self.current_texture_old.use(5)
+                    self.picture_vertices.render(self.gl_program_pic[1 - self.program_id])
 
-        self.current_texture.use(5)
-        self.picture_vertices.render(self.gl_program_pic[self.program_id])
+            self.current_texture.use(5)
+            self.picture_vertices.render(self.gl_program_pic[self.program_id])
 
         self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
         self.round_vao.render(self.gl_program_round)
@@ -1595,20 +1726,30 @@ class ModernSlideShower(mglw.WindowConfig):
                 return message_top
 
             if self.show_image_info == 1:
-                info_text = ["Folder: " + os.path.dirname(self.get_file_path(self.image_index))]
-                next_message_top = show_info_window(next_message_top, info_text, "Directory")
-
-                im_mp = self.im_object.width * self.im_object.height / 1000000
-                dir_index = self.file_to_dir[self.image_index]
-                dirs_in_folder = self.dir_to_file[dir_index][1]
-                index_in_folder = self.image_index + 1 - self.dir_to_file[dir_index][0]
-                info_text = ["File name: " + os.path.basename(self.get_file_path(self.image_index)),
-                             "File size: " + self.format_bytes(self.current_image_file_size),
-                             "Image size: " + f"{self.im_object.width} x {self.im_object.height}",
-                             "Image size: " + f"{im_mp:.2f} megapixels",
-                             "Image # (current folder): " + f"{index_in_folder:d} of {dirs_in_folder:d}",
-                             "Image # (all list): " + f"{self.image_index + 1:d} of {self.image_count:d}",
-                             "Folder #: " + f"{dir_index + 1:d} of {self.dir_count:d}"]
+                if self.mandelbrot_mode:
+                    info_text = [
+                        "Mandelbrot mode",
+                        "Position:",
+                        f"  x: {self.gl_program_mandel['pic_position'].value[0]:.17f}",
+                        f"  y: {self.gl_program_mandel['pic_position'].value[1]:.17f}",
+                        f"Log Zoom: {math.log(self.gl_program_mandel['zoom'].value, 2):.1f}",
+                        f"Actual Zoom: {self.gl_program_mandel['zoom'].value:.3f}",
+                        f"Complexity: {-self.gl_program_mandel['complexity'].value:.2f}"
+                    ]
+                else:
+                    info_text = ["Folder: " + os.path.dirname(self.get_file_path(self.image_index))]
+                    next_message_top = show_info_window(next_message_top, info_text, "Directory")
+                    im_mp = self.image_original_size.x * self.image_original_size.y / 1000000
+                    dir_index = self.file_to_dir[self.image_index]
+                    dirs_in_folder = self.dir_to_file[dir_index][1]
+                    index_in_folder = self.image_index + 1 - self.dir_to_file[dir_index][0]
+                    info_text = ["File name: " + os.path.basename(self.get_file_path(self.image_index)),
+                                 "File size: " + self.format_bytes(self.current_image_file_size),
+                                 "Image size: " + f"{self.image_original_size.x} x {self.image_original_size.y}",
+                                 "Image size: " + f"{im_mp:.2f} megapixels",
+                                 "Image # (current folder): " + f"{index_in_folder:d} of {dirs_in_folder:d}",
+                                 "Image # (all list): " + f"{self.image_index + 1:d} of {self.image_count:d}",
+                                 "Folder #: " + f"{dir_index + 1:d} of {self.dir_count:d}"]
                 next_message_top = show_info_window(next_message_top, info_text, "File props")
             next_message_top += 10
 
