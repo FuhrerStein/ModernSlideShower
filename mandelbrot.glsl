@@ -15,6 +15,8 @@ void main() {
 
 #elif defined FRAGMENT_SHADER
 
+#define complexMul(a, b) vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x)
+
 layout(binding=5) uniform sampler2D texture0;
 layout(binding=6) uniform sampler2D texture_curve;
 layout(binding=7, r32ui) uniform uimage2D histogram_texture;
@@ -40,6 +42,7 @@ uniform float zoom;
 uniform float complexity;
 uniform dvec2 wnd_size;
 uniform dvec2 pic_position;
+uniform dvec2 pic_position_precise;
 
 int n;
 
@@ -65,42 +68,117 @@ float a3;
 
 void main() {
 
-    maxIteration = - (log2(zoom) * .66 + 10) * complexity;
+    maxIteration = (log2(zoom) * .66 + 10) * complexity;
 
     coord_x = double(uv0.x - .5) * wnd_size.x / 1000 / zoom - pic_position.x;
     coord_y = double(uv0.y - .5) * wnd_size.y / 1000 / zoom - pic_position.y;
+    double max_win = max(wnd_size.x, wnd_size.y);
+    double coord_x_high = - pic_position.x / max_win;
+    double coord_y_high = - pic_position.y / max_win;
+    double coord_x_low  = double(uv0.x - .5) * wnd_size.x * .001 / zoom - pic_position_precise.x / max_win / 1e26*0;
+    double coord_y_low  = double(uv0.y - .5) * wnd_size.y * .001 / zoom - pic_position_precise.y / max_win / 1e26*0;
 
     n = 0;
 
+//    vec2 zlo = vec2(0.);
+//    vec2 zhi = vec2(0.);
+//    vec2 add = vec2(0.);
+//    vec2 z   = vec2(0.);
+
+//
+//    while (n + final_step < maxIteration)
+//    {
+//        pre_final_step = final_step;
+//        final_step = length(vec2(a, b));
+//
+//        b_next = 2 * a * b + coord_y;
+//        a = a * a - b * b + coord_x;
+//        b = b_next;
+//        n++;
+//    }
+
+    double a_hi = 0;
+    double b_hi = 0;
+//    double b_hi_next;
+
+
     while (n + final_step < maxIteration)
     {
-//        a2 *= .9;
-//        final_step2 += double(final_step / (n + 50));
-//        a2 += float((final_step2) * (maxIteration - final_step) * .1);
-//        a3 += float((final_step) * (smoothstep(0, 20, float(pow(float(maxIteration), .4)/.0005000  - final_step2 + 30)))) * 0.01;
-//        a3 += float((final_step2) * (sin((float(maxIteration / 50 - final_step2 + 10))))) * 1;
-//        final_step2 = a + b;
-//        step_sum += final_step / n;
-//        a3 = float(n / 40 + a * 0);
-//        if (n > maxIteration) break;
-//        if (n + final_step > maxIteration) break;
-//        if (final_step > 5) break;
-//        if (maxIteration - final_step2 - 10 > 0) break;
-        pre_final_step = final_step;
-        final_step = length(vec2(a, b));
+//        add = 2.0 * complexMul(zhi, zlo);
+//        zhi = complexMul(zhi, zhi)       + pc.xy;
+//        zlo = complexMul(zlo, zlo) + add + pc.zw;
+//        z = zhi + zlo;
+//
+//
 
-        b_next = 2 * a * b + coord_y;
-        a = a * a - b * b + coord_x;
-        b = b_next;
+        pre_final_step = final_step;
+        final_step = length(vec2((a + a_hi), (b + b_hi)));
+
+//        double a_hi2 = a_hi * a_hi;
+//        double a_lo2 = a * a;
+
+//        b_next = 2 * (a + a_hi) * b + coord_y;
+
+
+//        b_next = 2 * (a + a_hi) * (b_hi + b) + coord_y_high;
+
+        double b_all2 = (b_hi + b) * (b_hi + b);
+        double b_hi_o = b_hi;
+        double b_o = b;
+
+
+        b = 2 * (a * b + a_hi * b + a * b_hi) + coord_y_low;
+        b_hi = 2 * a_hi * b_hi + coord_y_high;
+
+        a = a * a + coord_x_low + 2 * a_hi * a - b_o * b_o - 2 * b_hi_o * b_o;
+//        a_hi = a_hi * a_hi + coord_x_high - b_all2 ;
+//        a_hi = a_hi * a_hi + coord_x_high - (b_hi + b) * (b_hi + b) ;
+        a_hi = a_hi * a_hi + coord_x_high - b_hi_o * b_hi_o;
+
+
         n++;
+//
+//        if (abs(a_hi) / abs(a) < 10000000) {
+//            a_hi += a * .9;
+//            a -= a * .9;
+//        }
+//
+//        if (abs(b_hi) / abs(b) < 10000000) {
+//            b_hi += b * .9;
+//            b -= b * .9;
+//        }
+
+        if (abs(a_hi) / abs(a) < 100) {
+            a_hi += a;
+            a = 0;
+        }
+
+        if (abs(b_hi) / abs(b) < 100) {
+            b_hi += b;
+            b = 0;
+        }
+
+
+//
+//        if (abs(a_hi) / abs(a) > 1000000) {
+//            a += a_hi * .0001;
+//            a_hi -= a_hi * .0001;
+//        }
+//
+//        if (abs(b_hi) / abs(b) > 1000000) {
+//            b += b_hi * .0001;
+//            b_hi -= b_hi * .0001;
+//        }
+
     }
-//        a1 = float((final_step2) * (maxIteration - final_step) * 1);
+
+
     a1 = smoothstep(0, 40, pre_final_step * (20 - pre_final_step));
     a2 = (pre_final_step - 10) * (maxIteration - n - pre_final_step);
     a2 = smoothstep(-50, (maxIteration - n) * (maxIteration - n - 10), a2) * 2;
     a3 = smoothstep(0, (maxIteration - n), pre_final_step);
 
-    gl_FragColor  = vec4(a2 * 0.4, a2 * .4, a2*1, 1);
+    gl_FragColor  = vec4(a2 * 0.4, a2 * .4, a2 * 1, 1);
 
 //    a1 = smoothstep(-1, 5, float(final_step));
 //    a2 = float(final_step);

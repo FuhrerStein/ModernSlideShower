@@ -64,6 +64,8 @@ uniform vec2 transition_center;
 uniform float zoom_scale;
 uniform float inter_blur;
 uniform float spd;
+uniform vec4 crop;
+uniform vec2 pix_size;
 
 out vec4 fragColor;
 in vec2 uv0;
@@ -147,7 +149,11 @@ void main() {
     float to_edge = smoothstep(0, 1, to_edge_x + to_edge_y) * smoothstep(0, 1,  to_edge_x * to_edge_y);
     float tran_alpha = smoothstep(-min_edge, -max_edge, -length(uv0 - transition_center)) * f_show_amount;
 
-    fragColor = vec4(tempColor.rgb, tran_alpha * translucency * to_edge);
+    float crop_alpha = 1;
+    crop_alpha *= step(crop.x / pix_size.x, uv0.x) * step(crop.y / pix_size.x - 1, -uv0.x);
+    crop_alpha *= step(crop.w / pix_size.y, uv0.y) * step(crop.z / pix_size.y - 1, -uv0.y);
+    crop_alpha += .2;
+    fragColor = vec4(tempColor.rgb, tran_alpha * translucency * to_edge * crop_alpha);
 }
 
 #endif
