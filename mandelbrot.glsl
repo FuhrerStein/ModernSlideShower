@@ -8,55 +8,39 @@ layout(location = 1) in vec2 in_texcoord;
 out vec2 uv0;
 
 void main() {
-    uv0 = in_texcoord;
+    uv0 = in_texcoord - .5;
     gl_Position = vec4(in_position.x, -in_position.y, 1, 1);
 }
 
 
 #elif defined FRAGMENT_SHADER
 
-#define complexMul(a, b) vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x)
+#define split_constant 67108865  // 2^26+1
+#define prezoom 1e-3
+#define highdef 0
 
 layout(binding=5) uniform sampler2D texture0;
 layout(binding=6) uniform sampler2D texture_curve;
-layout(binding=7, r32ui) uniform uimage2D histogram_texture;
+layout(binding=8, r32ui) uniform uimage2D histogram_texture;
 
 uniform bool useCurves;
 uniform bool count_histograms;
 in vec2 uv0;
-//uniform vec2 transition_center;
-//uniform float zoom_scale;
-//uniform float inter_blur;
-//uniform float spd;
-//uniform float hide_borders;
-//in float translucency;
-//in float f_show_amount;
-//in float min_edge;
-//in float max_edge;
-//in float tran_blur;
-
-
-//uniform double X0;
-//uniform double Y0;
 uniform float zoom;
 uniform float complexity;
 uniform dvec2 wnd_size;
-uniform dvec2 pic_position;
-uniform dvec2 pic_position_precise;
+uniform dvec2 pic_position_1;
+uniform dvec2 pic_position_2;
+uniform dvec2 pic_position_3;
+
+uniform dvec4 pic_positiondd_x;
+uniform dvec4 pic_positiondd_y;
 
 int n;
 
-double a;
-double b;
-double b_next;
-
-double coord_x;
-double coord_y;
-
-float maxIteration;
-
-float final_step = 0;
-float pre_final_step = 0;
+//double a;
+//double b;
+//double b_next;
 
 float red;
 float green;
@@ -66,158 +50,257 @@ float a1;
 float a2;
 float a3;
 
+dvec2 two_sum(double a, double b){
+    double s = a + b;
+    double v = s - a;
+    double e = (a - (s - v)) + (b - v);
+    return dvec2(s, e);
+}
+
+dvec2 quick_two_sum(double a, double b){
+    double s = a + b;
+    double e = b - (s - a);
+    return dvec2(s, e);
+}
+
+dvec4 two_sum_comp(dvec2 a, dvec2 b){
+    dvec2 s = a + b;
+    dvec2 v = s - a;
+    dvec2 e = (a - (s - v)) + (b - v);
+    return dvec4(s.x, e.x, s.y, e.y);
+}
+
+dvec2 two_vec_add(dvec2 a, dvec2 b){
+    dvec2 s, t;
+    s = two_sum(a.x, b.x);
+    t = two_sum(a.y, b.y);
+    s.y += t.x;
+    s = quick_two_sum(s.x, s.y);
+    s.y += t.y;
+    s = quick_two_sum(s.x, s.y);
+    return s;
+}
+
+dvec2 two_vec_add_vec(dvec2 a, dvec2 b){
+    dvec4 st = two_sum_comp(a, b);
+    st.y += st.z;
+    st.xy = quick_two_sum(st.x, st.y);
+    st.y += st.w;
+    st.xy = quick_two_sum(st.x, st.y);
+    return st.xy;
+}
+
+dvec2 two_vec_add_vec4(dvec2 a, dvec2 b){
+    double ss, ee;
+    dvec2 s = a + b;
+    dvec2 v = s - a;
+    dvec2 e = (a - (s - v)) + (b - v);
+    e.x += s.y;
+    ss = s.x + e.x;
+    e.x = e.x - (ss - s.x);
+    s.x = ss;
+    e.x += e.y;
+    ss += e.x;
+    ee = e.x - (ss - s.x);
+    return dvec2(ss, ee);
+}
+
+dvec2 two_vec_add_vec2(dvec2 a, dvec2 b){
+    double s, e;
+    dvec4 st = two_sum_comp(a, b);
+    st.y += st.z;
+    s = st.x + st.y;
+    st.y = st.y - (s - st.x);
+    st.x = s;
+    st.y += st.w;
+    s = st.x + st.y;
+    e = st.y - (s - st.x);
+    return dvec2(s, e);
+
+//    return st.xy;
+}
+
+dvec2 split(double a){
+    double t = a * split_constant;
+    double a_hi = t - (t - a);
+    double a_lo = a - a_hi;
+    return dvec2(a_hi, a_lo);
+}
+
+dvec4 split_comp(dvec2 c){
+    dvec2 t = c * split_constant;
+    dvec2 c_hi = t - (t - c);
+    dvec2 c_lo = c - c_hi;
+    return dvec4(c_hi.x, c_lo.x, c_hi.y, c_lo.y);
+}
+
+dvec2 two_prod(double a, double b){
+    double p = a * b;
+    dvec2 a_s = split(a);
+    dvec2 b_s = split(b);
+    double err = ((a_s.x * b_s.x - p) + a_s.x * b_s.y + a_s.y * b_s.x) + a_s.y * b_s.y;
+    return dvec2(p, err);
+}
+
+//dvec2 two_prod(double a, double b){
+//    double p = a * b;
+//    dvec2 a_s = split(a);
+//    dvec2 b_s = split(b);
+//    double err1 = a_s.x * b_s.x - p;
+//    double err2 = err1 + a_s.y * b_s.x + a_s.x * b_s.y;
+//    double err = a_s.y * b_s.y + err2;
+//    return dvec2 (p, err);
+//}
+
+
+dvec2 two_prod_fma(double a, double b){
+    double x = a * b;
+    double y = fma(a, b, -x);
+    return dvec2 (x, y);
+}
+
+dvec2 two_vec_prod(dvec2 a, dvec2 b){
+    dvec2 p = two_prod(a.x, b.x);
+    p.y += a.x * b.y;
+    p.y += a.y * b.x;
+    p = quick_two_sum(p.x, p.y);
+    return p;
+}
+
+dvec2 two_vec_prod_fma(dvec2 a, dvec2 b){
+    dvec2 p = two_prod_fma(a.x, b.x);
+    p.y += a.x * b.y;
+    p.y += a.y * b.x;
+    p = quick_two_sum(p.x, p.y);
+    return p;
+}
+
+dvec2 two_vec_prod_fma_s(dvec2 a, dvec2 b){
+    double x = a.x * b.x;
+    double y = fma(a.x, b.x, -x);
+    y += a.x * b.y;
+    y += a.y * b.x;
+    double s = x + y;
+    double e = y - (s - x);
+    return dvec2(s, e);
+}
+
+dvec2 single_sqr(double a){
+    double p = a * a;
+    dvec2 a_s = split(a);
+    double err = ((a_s.x * a_s.x - p) + 2 * a_s.x * a_s.y) + a_s.y * a_s.y;
+    return dvec2(p, err);
+}
+
+dvec2 single_sqr_fma(double a){
+    double x = a * a;
+    double y = fma(a, a, -x);
+    return dvec2 (x, y);
+}
+
+
+dvec2 vec_sqr(dvec2 a){
+    dvec2 p = single_sqr(a.x);
+    p.y += 2 * a.x * a.y;
+    p = quick_two_sum(p.x, p.y);
+    return p;
+}
+
+dvec2 vec_sqr_fma(dvec2 a){
+    double x, y, s, e;
+    x = a.x * a.x;
+    y = fma(a.x, a.x, -x);
+    y = fma(a.x, 2 * a.y, y);
+    s = x + y;
+    e = y - (s - x);
+    return dvec2(s, e);
+}
+
+dvec2 vec_sqr_simple_1(dvec2 a){
+    double p_x, p_y, s, e, t, a_hi_hi, a_hi_lo;
+    t = a.x * split_constant;
+    a_hi_hi = t - (t - a.x);
+    a_hi_lo = a.x - a_hi_hi;
+    p_x = a.x * a.x;
+    p_y = ((a_hi_hi * a_hi_hi - p_x) + 2 * a_hi_hi * a_hi_lo) + a_hi_lo * a_hi_lo;
+    p_y += 2 * a.x * a.y;
+    s = p_x + p_y;
+    e = p_y - (s - p_x);
+    return dvec2(s, e);
+}
+
+
 void main() {
-
-    maxIteration = (log2(zoom) * .66 + 10) * complexity;
-
-    coord_x = double(uv0.x - .5) * wnd_size.x / 1000 / zoom - pic_position.x;
-    coord_y = double(uv0.y - .5) * wnd_size.y / 1000 / zoom - pic_position.y;
-    double max_win = max(wnd_size.x, wnd_size.y);
-    double coord_x_high = - pic_position.x / max_win;
-    double coord_y_high = - pic_position.y / max_win;
-    double coord_x_low  = double(uv0.x - .5) * wnd_size.x * .001 / zoom - pic_position_precise.x / max_win / 1e26*0;
-    double coord_y_low  = double(uv0.y - .5) * wnd_size.y * .001 / zoom - pic_position_precise.y / max_win / 1e26*0;
-
     n = 0;
 
-//    vec2 zlo = vec2(0.);
-//    vec2 zhi = vec2(0.);
-//    vec2 add = vec2(0.);
-//    vec2 z   = vec2(0.);
+    float final_step2 = 0;
+    float final_step_sum = 0;
+    float pre_final_step = 0;
+    double final_step = 0;
 
-//
-//    while (n + final_step < maxIteration)
-//    {
-//        pre_final_step = final_step;
-//        final_step = length(vec2(a, b));
-//
-//        b_next = 2 * a * b + coord_y;
-//        a = a * a - b * b + coord_x;
-//        b = b_next;
-//        n++;
-//    }
+    dvec2 va = dvec2(0);
+    dvec2 vb = dvec2(0);
+//    dvec2 va_sqr = dvec2(0);
+    dvec2 vb_sqr = dvec2(0);
+//    dvec2 vb_n = dvec2(0);
 
-    double a_hi = 0;
-    double b_hi = 0;
-//    double b_hi_next;
+    dvec2 coord_x_var = two_prod(wnd_size.x * uv0.x, prezoom / zoom);
+    dvec2 coord_y_var = two_prod(wnd_size.y * uv0.y, prezoom / zoom);
+
+    #if (1 - highdef)
+        coord_x_var = two_vec_add_vec4(coord_x_var, pic_positiondd_x.xy);
+        coord_x_var = two_vec_add_vec4(coord_x_var, pic_positiondd_x.zw);
+        coord_y_var = two_vec_add_vec4(coord_y_var, pic_positiondd_y.xy);
+        coord_y_var = two_vec_add_vec4(coord_y_var, pic_positiondd_y.zw);
+    #endif
 
 
-    while (n + final_step < maxIteration)
+    while (n + final_step < complexity)
     {
-//        add = 2.0 * complexMul(zhi, zlo);
-//        zhi = complexMul(zhi, zhi)       + pc.xy;
-//        zlo = complexMul(zlo, zlo) + add + pc.zw;
-//        z = zhi + zlo;
-//
-//
+        pre_final_step = float(final_step);
+        final_step = length(dvec2(va.x, vb.x));
 
-        pre_final_step = final_step;
-        final_step = length(vec2((a + a_hi), (b + b_hi)));
+        vb_sqr = -vec_sqr_simple_1(vb);
+        vb = two_vec_prod_fma_s(2 * va, vb);
+        #if highdef
+            vb = two_vec_add_vec4(vb, pic_positiondd_y.xy);
+            vb = two_vec_add_vec4(vb, pic_positiondd_y.zw);
+        #endif
+        vb = two_vec_add_vec4(vb, coord_y_var);
 
-//        double a_hi2 = a_hi * a_hi;
-//        double a_lo2 = a * a;
-
-//        b_next = 2 * (a + a_hi) * b + coord_y;
-
-
-//        b_next = 2 * (a + a_hi) * (b_hi + b) + coord_y_high;
-
-        double b_all2 = (b_hi + b) * (b_hi + b);
-        double b_hi_o = b_hi;
-        double b_o = b;
-
-
-        b = 2 * (a * b + a_hi * b + a * b_hi) + coord_y_low;
-        b_hi = 2 * a_hi * b_hi + coord_y_high;
-
-        a = a * a + coord_x_low + 2 * a_hi * a - b_o * b_o - 2 * b_hi_o * b_o;
-//        a_hi = a_hi * a_hi + coord_x_high - b_all2 ;
-//        a_hi = a_hi * a_hi + coord_x_high - (b_hi + b) * (b_hi + b) ;
-        a_hi = a_hi * a_hi + coord_x_high - b_hi_o * b_hi_o;
-
-
+        va = two_vec_add_vec4(vec_sqr_simple_1(va), vb_sqr);
+        #if highdef
+            va = two_vec_add_vec4(va, pic_positiondd_x.xy);
+            va = two_vec_add_vec4(va, pic_positiondd_x.zw);
+        #endif
+        va = two_vec_add_vec4(va, coord_x_var);
         n++;
-//
-//        if (abs(a_hi) / abs(a) < 10000000) {
-//            a_hi += a * .9;
-//            a -= a * .9;
-//        }
-//
-//        if (abs(b_hi) / abs(b) < 10000000) {
-//            b_hi += b * .9;
-//            b -= b * .9;
-//        }
-
-        if (abs(a_hi) / abs(a) < 100) {
-            a_hi += a;
-            a = 0;
-        }
-
-        if (abs(b_hi) / abs(b) < 100) {
-            b_hi += b;
-            b = 0;
-        }
-
-
-//
-//        if (abs(a_hi) / abs(a) > 1000000) {
-//            a += a_hi * .0001;
-//            a_hi -= a_hi * .0001;
-//        }
-//
-//        if (abs(b_hi) / abs(b) > 1000000) {
-//            b += b_hi * .0001;
-//            b_hi -= b_hi * .0001;
-//        }
-
     }
 
+    int n_was_bigger = int(step(n, complexity * .95) * 32);
+    ivec2 cluster_coord = ivec2((uv0 + .5) * 32) + ivec2(0, n_was_bigger);
 
+    imageAtomicAdd(histogram_texture, cluster_coord, 1u);
+    float floatmaxIt = float(complexity);
     a1 = smoothstep(0, 40, pre_final_step * (20 - pre_final_step));
-    a2 = (pre_final_step - 10) * (maxIteration - n - pre_final_step);
-    a2 = smoothstep(-50, (maxIteration - n) * (maxIteration - n - 10), a2) * 2;
-    a3 = smoothstep(0, (maxIteration - n), pre_final_step);
+    a1 = smoothstep(0, 40, final_step2 * (20 - final_step2));
+//    a1 = smoothstep(0, 10000, final_step2 );
+//    a1 = smoothstep(0, 10, final_step2 );
+//    a1 = smoothstep(0, 1, sin(final_step2 * 1000) );
+//    a1 = smoothstep(0, 1, sin(final_step2 * 100000) );
+//    a1 = smoothstep(0, 1, cos(final_step2 * 100000) );
+//    a1 = smoothstep(-1, 1, cos(final_step2 * 100000) );
+//    a1 = smoothstep(-1, 1, tanh(final_step2 * 1) );
+//    a1 = smoothstep(-10000, 10000, (final_step_sum * 1) ) * (pre_final_step - 10) * (float(maxIteration) - n - pre_final_step);
+//    a1 = smoothstep(-10000, 10000, (final_step_sum * 1) ) * smoothstep(0, (floatmaxIt - n), pre_final_step);
+    a2 = (pre_final_step - 10) * (float(complexity) - n - pre_final_step);
+    a2 = smoothstep(-50, (floatmaxIt - n) * (floatmaxIt - n - 10), a2) * 2;
+    a3 = smoothstep(0, (floatmaxIt - n), pre_final_step);
 
     gl_FragColor  = vec4(a2 * 0.4, a2 * .4, a2 * 1, 1);
+    gl_FragColor  = vec4(-a3 * 0.1 + a1 * .1, a2 * .7 - a3*.2, a2 * 1, 1);
+//    gl_FragColor  = vec4(a3 * 0.1 + a1 * .1, a2 * .7 + a3 *.2, a3 * 1, 1);
 
-//    a1 = smoothstep(-1, 5, float(final_step));
-//    a2 = float(final_step);
-//    a3 = smoothstep(0, 5, float(final_step2));
-
-//    a2 = smoothstep(0, 10, float(sqrt(a2)));
-//    a3 = smoothstep(1, 50, float(a2));
-
-
-
-//    red = sin(3.14159 * smoothstep(-1, 1, float(step_sum) + float(final_step)));
-//    green = sin(3.14159 * smoothstep(-1, 5, float(step_sum)));
-//    blue = .7 * cos(3.14159 * smoothstep(-1, 5, float(step_sum))) + .3 * smoothstep(-1, 5, float(final_step));
-
-
-
-
-    //    float red = pow(smoothstep(-1, 1, sin(length(vec2(a, b)))), 1.7);
-    //    float green = sin(length(vec2(a, b)) / 200 + float(sqrt(n / maxIteration))/5);
-    //    float blue = 1 - smoothstep(-1, 1, cos(length(vec2(a, b))));
-//    float blue = 1 - sin(length(vec2(a, b))) / 1.2;
-//    float
-//    if (n < maxIteration) gl_FragColor = vec4(length(vec2(a, b)) / 3 , sqrt(n / maxIteration), 0, 1);
-
-//    if (n < maxIteration)
-//    {
-//        gl_FragColor = vec4(red, green, blue, 1);
-//    }
-////    else gl_FragColor = vec4(uv0.x, uv0.y, uv0.x + uv0.y, 1);
-//    else gl_FragColor = vec4(red, green, blue, 1);// * vec4(uv0.x, uv0.y, uv0.x + uv0.y, 1);
-//    gl_FragColor = vec4(red * .7 + green * .3 + blue * -.1, green * .4 + blue * .3 , blue * .5 + green * .1 + red * - .1, 1);// * vec4(uv0.x, uv0.y, uv0.x + uv0.y, 1);
-
-
-    //    float actual_blur = 1 + inter_blur * tran_blur;
-    //    vec2 dx = dFdx(uv0) * actual_blur;
-    //    vec2 dy = dFdy(uv0) * actual_blur;
-    //    vec2 zero = vec2(0);
-    //    tempColor = textureGrad(texture0, uv0, dx, dy);
-    //
     //
     //    if(useCurves)
     //    {
@@ -245,12 +328,6 @@ void main() {
     //        imageAtomicAdd(histogram_texture, ivec2(tempColor.g * 255 + .5, 3), 1u);
     //        imageAtomicAdd(histogram_texture, ivec2(tempColor.b * 255 + .5, 4), 1u);
     //    }
-
-    // Edges and transitions
-    //    float to_edge_x = pow(smoothstep(-0.5, -.5 + hide_borders, -abs(uv0.x - .5)), .3);
-    //    float to_edge_y = pow(smoothstep(-0.5, -.5 + hide_borders, -abs(uv0.y - .5)), .3);
-    //    float to_edge = smoothstep(0, 1, to_edge_x + to_edge_y) * smoothstep(0, 1,  to_edge_x * to_edge_y);
-    //    float tran_alpha = smoothstep(-min_edge, -max_edge, -length(uv0 - transition_center)) * f_show_amount;
 
     //    fragColor = vec4(tempColor.rgb, tran_alpha * translucency * to_edge);
     //    fragColor = vec4(tempColor, 1);

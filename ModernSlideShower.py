@@ -7,15 +7,18 @@ import moderngl_window.context.base
 import moderngl_window.meta
 import moderngl_window.opengl.vao
 import moderngl_window.timers.clock
+import mpmath
 from moderngl_window.opengl import program
 from moderngl_window.integrations.imgui import ModernglWindowRenderer
 from PIL import Image
+from scipy.ndimage.filters import gaussian_filter
 import numpy as np
 import math
 import os
 import sys
 import random
 import collections
+from mpmath import mp
 
 # from scipy.interpolate import BSpline
 HIDE_BORDERS = 1
@@ -58,9 +61,10 @@ Point = collections.namedtuple('Point', ['x', 'y'])
 #    todo: add 3-4 user-editable parameters to mandelbrot_mode
 #    todo: add other julia sets in mandelbrot_mode
 #    todo: tutorial mode to teach user how to use program
-#    todo: double-double presision calculation for mandelbrot_mode
 
 
+#    todone: automatic travel in mandelbrot mode
+#    todone: double-double presision calculation for mandelbrot_mode
 #    todone: lossy image cropping in full edit mode
 #    todone: make mandelbrot_mode eye candy
 #    todone: basic live mandelbrot when no images found
@@ -264,6 +268,10 @@ void main() {
 '''
 
 
+def sigmoid(x, mi, mx):
+    return mi + (mx - mi) * (lambda t: (1 + 200 ** (-t + 0.5)) ** (-1))((x - mi) / (mx - mi))
+
+
 class ModernSlideShower(mglw.WindowConfig):
     gl_version = (4, 3)
     title = "imgui Integration"
@@ -272,6 +280,7 @@ class ModernSlideShower(mglw.WindowConfig):
     wnd = mglw.context.base.BaseWindow
 
     start_with_random_image = False
+    average_frame_time = 0
 
     picture_vertices4 = moderngl.VertexArray
     round_vao = moderngl.VertexArray
@@ -293,20 +302,18 @@ class ModernSlideShower(mglw.WindowConfig):
 
     common_path = ""
     im_object = Image
-    pic_position = np.array([0., 0.], dtype=np.float64)
-    pic_position_future = np.array([0., 0.], dtype=np.float64)
-    pic_position_2 = np.array([0., 0.], dtype=np.float64)
-    pic_position_2_future = np.array([0., 0.], dtype=np.float64)
-    pic_position_speed = np.array([0., 0.], dtype=np.float64)
-    # pic_pos_complex = 0j
-    # pic_pos_complex_f = 0j
-    # pic_speed_complex = 0j
+
+    pic_pos_current = mp.mpc()
+    pic_pos_future = mp.mpc()
+    pic_move_speed = mp.mpc()
+
     pic_zoom = .5
-    pic_zoom_future = 1.
+    pic_zoom_future = .2
     pic_angle = 0.
     pic_angle_future = 0.
     gl_program_round = moderngl.program
     gl_program_mandel = moderngl.program
+    gl_program_mandel_b = moderngl.program
     gl_program_crop = moderngl.program
     gl_program_pic = [moderngl.program] * 2
     gl_program_pic_v = moderngl.program
@@ -330,9 +337,30 @@ class ModernSlideShower(mglw.WindowConfig):
 
     mandelbrot_mode = False
 
+    mandel_stat_texture = [moderngl.texture] * 2
+    mandel_stat_texture_id = 0
+    mandel_stat_texture_swapped = False
+    mandel_stat_texture_empty = moderngl.Buffer
+    # mandel_stat_array = np.empty
+    mandel_zones_mask = np.empty
+    mandel_stat_pull_time = 0
+    mandel_good_zones = np.empty((32, 32))
+    mandel_look_for_good_zones = True
+    mandel_chosen_zone = (0, 0)
+    mandel_move_acceleration = mp.mpc()
+    mandel_auto_travel_mode = 0
+    mandel_auto_travel_speed = 1
+    mandel_zones_hg = np.empty
+    mandel_show_debug = False
+    mandel_auto_complexity = 0.
+    mandel_auto_complexity_speed = 0.
+    mandel_auto_complexity_target = 0.
+    mandel_auto_complexity_fill_target = 950
+    mandel_use_beta = False
+
     configs = {
         HIDE_BORDERS: 0.02,
-        TRANSITION_SPEED: .15,
+        TRANSITION_SPEED: .18,
         INTER_BLUR: 10.,
         STARTING_ZOOM_FACTOR: 1.03,
     }
@@ -391,10 +419,12 @@ class ModernSlideShower(mglw.WindowConfig):
     levels_edit_parameter = 0
     levels_edit_group = 0
 
-    key_picture_movement = [False] * 6
+    key_picture_movement = [False] * 8
 
     transform_mode = 0
     transform_mode_column = 0
+    crop_borders_active = 0
+    crop_borders_visible = [False] * 4
     crop_borders = np.array([0.] * 4)
 
     transition_stage = 1.
@@ -459,16 +489,21 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def init_program(self):
         self.ret_vertex_buffer = self.ctx.buffer(reserve=32)
+        mp.prec = 120
+
+        x = np.arange(0, 32)
+        y = x[:, np.newaxis]
+        self.mandel_zones_mask = np.exp(-((x - 16) ** 2 + (y - 16) ** 2) / 50).astype(np.float, order='F')
 
         self.picture_vertices4 = mglw.opengl.vao.VAO("main_image")
         # points are flipped to accommodate for inverted texture/image orders
         point_coord = np.array([
             [-1, -1, 1, 1],  # x
-            [-1, 1, -1, 1]   # y
+            [-1, 1, -1, 1]  # y
         ], dtype=np.float32).T
         texture_coord = np.array([
-            [0, 0, 1, 1],    # x
-            [1, 0, 1, 0]     # y
+            [0, 0, 1, 1],  # x
+            [1, 0, 1, 0]  # y
         ], dtype=np.float32).T
         self.picture_vertices4.buffer(point_coord, '2f', ['in_position'])
         self.picture_vertices4.buffer(texture_coord, '2f', ['in_texcoord'])
@@ -481,6 +516,7 @@ class ModernSlideShower(mglw.WindowConfig):
         picture_program_v_text = ""
         round_program_text = round_glsl
         mandel_program_text = ""
+        mandel_program_beta_text = ""
         crop_program_text = ""
         if os.path.isfile('picture.glsl'):
             picture_program_text = open('picture.glsl', 'r').read()
@@ -490,6 +526,8 @@ class ModernSlideShower(mglw.WindowConfig):
             round_program_text = open('round.glsl', 'r').read()
         if os.path.isfile('mandelbrot.glsl'):
             mandel_program_text = open('mandelbrot.glsl', 'r').read()
+        # if os.path.isfile('mandelbrot_b.glsl'):
+        #     mandel_program_beta_text = open('mandelbrot_b.glsl', 'r').read()
         if os.path.isfile('crop.glsl'):
             crop_program_text = open('crop.glsl', 'r').read()
 
@@ -503,9 +541,14 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_round = shaders.create()
         shaders = program.ProgramShaders.from_single(dummy_program_description, mandel_program_text)
         self.gl_program_mandel = shaders.create()
+        # shaders = program.ProgramShaders.from_single(dummy_program_description, mandel_program_beta_text)
+        # self.gl_program_mandel = shaders.create()
         shaders = program.ProgramShaders.from_single(dummy_program_description, crop_program_text)
         self.gl_program_crop = shaders.create()
 
+        self.mandel_stat_texture = [self.ctx.texture((32, 64), 4), self.ctx.texture((32, 64), 4)]
+        self.mandel_stat_texture[0].bind_to_image(8, read=True, write=True)
+        self.mandel_stat_texture_empty = self.ctx.buffer(reserve=(32 * 64 * 4))
         self.histo_texture = self.ctx.texture((256, 5), 4)
         self.histo_texture.bind_to_image(7, read=True, write=True)
         self.histo_texture_empty = self.ctx.buffer(reserve=(256 * 5 * 4))
@@ -549,8 +592,8 @@ class ModernSlideShower(mglw.WindowConfig):
         point_coord = np.array([
             [-1, 1.1], [-1, -1.1],
             [1, 1.1], [1, -1.1],
-            [-1.1, 1], [1.1, 1],
             [-1.1, -1], [1.1, -1],
+            [-1.1, 1], [1.1, 1],
         ], dtype=np.float32)
         self.crop_vao.buffer(point_coord, '2f', ['in_position'])
 
@@ -806,6 +849,7 @@ class ModernSlideShower(mglw.WindowConfig):
             image_bytes = np.empty(self.wnd.width * self.wnd.height * 3, dtype=np.uint8)
             self.mandelbrot_mode = True
             self.show_image_info = 1
+            self.wnd.title = "ModernSlideShower: Mandelbrot mode"
         else:
             self.mandelbrot_mode = False
             try:
@@ -822,6 +866,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.load_next_existing_image()
                 return
 
+            self.wnd.title = "ModernSlideShower: " + image_path
         # self.image_texture_old = self.image_texture
         if self.image_texture != self.current_texture:
             self.release_texture(self.image_texture)
@@ -835,20 +880,21 @@ class ModernSlideShower(mglw.WindowConfig):
         self.current_texture = self.image_texture
         self.image_index = self.new_image_index
 
-        self.wnd.title = "ModernSlideShower: " + image_path
         self.reset_pic_position()
+        self.check_folder_change()
 
-        current_folder = self.file_to_dir[self.image_index]
-
-        if current_folder != self.last_image_folder:
-            self.schedule_pop_message(8, 5, current_folder=self.dir_list[current_folder:current_folder + 1])
-        self.last_image_folder = current_folder
         if self.image_index == 0 and not mandelbrot:
             self.schedule_pop_message(7)
             self.pic_zoom = self.pic_zoom_future * (self.configs[STARTING_ZOOM_FACTOR] - .5) ** -1
-            self.update_position()
+            # self.update_position()
         else:
             self.unschedule_pop_message(7)
+
+    def check_folder_change(self):
+        current_folder = self.file_to_dir[self.image_index]
+        if current_folder != self.last_image_folder:
+            self.schedule_pop_message(8, 5, current_folder=self.dir_list[current_folder:current_folder + 1])
+        self.last_image_folder = current_folder
 
     def load_next_existing_image(self):
         start_number = self.new_image_index
@@ -918,13 +964,13 @@ class ModernSlideShower(mglw.WindowConfig):
     def rotate_image_90(self, left=False):
         remainder = self.pic_angle_future % 90
         self.pic_angle_future = round(self.pic_angle_future - remainder + 90 * (left - (not left) * (remainder == 0)))
-        if self.pic_angle_future % 180:
-            self.pic_zoom_future = min(self.window_size[1] / self.current_texture.width,
-                                       self.window_size[0] / self.current_texture.height)
-        else:
-            self.pic_zoom_future = min(self.window_size[0] / self.current_texture.width,
-                                       self.window_size[1] / self.current_texture.height)
-        self.move_image()
+        # todo: centering here
+        # if self.pic_angle_future % 180:
+        #     self.pic_zoom_future = max(self.window_size[1] / self.current_texture.width,
+        #                                self.window_size[0] / self.current_texture.height)
+        # else:
+        #     self.pic_zoom_future = max(self.window_size[0] / self.current_texture.width,
+        #                                self.window_size[1] / self.current_texture.height)
 
         if self.pic_angle_future % 360:  # not at original angle
             if not (self.pic_angle_future % 90) and self.jpegtran_exe:  # but at 90°-ish
@@ -932,76 +978,109 @@ class ModernSlideShower(mglw.WindowConfig):
         else:
             self.unschedule_pop_message(2)
 
-    def check_if_image_in_window(self):
-        correction_vector = np.array([0., 0.])
+    def mandel_move_to_good_zone(self, frame_time_chunk):
+        speed_change = (-mp.mpc(*self.mandel_chosen_zone).conjugate() + 15.5 * (1 - 1j)) / self.pic_zoom / 100
+        vector_angle = (mpmath.arg(speed_change) - mpmath.arg(self.mandel_move_acceleration)) % math.tau
+        vector_angle = vector_angle * (math.tau - vector_angle)
+        self.mandel_move_acceleration *= 1 - (.03 + vector_angle / 10000) * (frame_time_chunk * 60)
+        self.mandel_move_acceleration += speed_change * (frame_time_chunk * 60) * .2
+        self.pic_move_speed += self.mandel_move_acceleration * self.mandel_auto_travel_speed * (frame_time_chunk * 40)
+
+    def mandel_travel(self, frame_time_chunk):
+        if self.mandel_auto_travel_mode == 2:
+            self.pic_zoom_future = self.pic_zoom_future * (1. - frame_time_chunk * self.mandel_auto_travel_speed)
+            self.run_move_image_inertial = True
+            if self.pic_zoom < .1:
+                self.mandel_auto_travel_mode = 1
+        elif self.mandel_auto_travel_mode == 1:
+            self.pic_zoom_future = self.pic_zoom_future * (1. + frame_time_chunk * self.mandel_auto_travel_speed / 2)
+            self.run_move_image_inertial = True
+            if self.pic_zoom_future > 1.3e30:
+                self.mandel_auto_travel_mode = 2
+            if self.mandel_good_zones.max() < .001:
+                self.mandel_auto_travel_mode = 3  # backstep mode
+        elif self.mandel_auto_travel_mode == 3:
+            #  Desmos: 1\ +\ \frac{x-4}{\left(x+2\right)^{2}}
+            unzoom = 1
+            if self.pic_zoom_future < 4:
+                unzoom = 1 + (self.pic_zoom_future - 4) / ((self.pic_zoom_future + 2) ** 2)
+            unzoom = 1. - frame_time_chunk * self.mandel_auto_travel_speed * unzoom
+            self.pic_zoom_future = self.pic_zoom_future * unzoom
+            self.run_move_image_inertial = True
+            if self.mandel_good_zones.max() > .002:
+                self.mandel_auto_travel_mode = 1  # continue forward
+
+        chunk10 = (sigmoid(frame_time_chunk, 0, .9))
+        step = frame_time_chunk * 10
+        rate = sigmoid(self.pic_zoom_future, 0, 1000) / 1000
+
+        complexity_goal = self.mandel_auto_complexity_target
+        self.mandel_auto_complexity *= 1 - chunk10 * rate
+        self.mandel_auto_complexity += self.mandel_auto_complexity_speed * chunk10 * rate
+        rate *= 1.02 + 20 * sigmoid(self.mandel_auto_complexity_target / 1000 - self.mandel_auto_complexity_speed, -.05,
+                                    .01)
+        self.mandel_auto_complexity_speed *= 1 - chunk10 * rate
+        self.mandel_auto_complexity_speed += self.mandel_auto_complexity_target * chunk10 * rate / 1000
+        print(f"{self.mandel_auto_complexity_target / 1000 - self.mandel_auto_complexity_speed:.3f}")
+
+    def move_image(self, dx=0, dy=0):
+        self.pic_move_speed += mp.mpc(dx, dy) / self.pic_zoom
+
+    def compute_transition(self, frame_time):
+        # todo: make so that transition_stage doesn't lag behind mouse_move_cumulative
+        transition_step = self.configs[TRANSITION_SPEED] ** 2 * (1.2 - self.transition_stage)
+        self.transition_stage += transition_step / (1 - abs(self.mouse_move_cumulative) / 100)
+        if self.transition_stage > .99999:
+            self.transition_stage = 1
+            self.release_texture(self.current_texture_old)
+
+    def compute_movement(self, chunk):
+        chunk10 = mp.mpf(sigmoid(chunk * 10, 0, .9))
+
+        self.pic_pos_future += self.check_image_vilible() * chunk10
+        self.pic_pos_future += self.pic_move_speed * 10 * chunk10
+        self.pic_pos_current = self.pic_pos_current * (1 - chunk10) + self.pic_pos_future * chunk10
+        self.pic_move_speed *= 1 - chunk10
+
+    def compute_zoom_rotation(self, chunk):
+        # chunk = 10 * frame_time if frame_time < .2 else .2
+        # todo: clean this mess
+        scale_disproportion = abs(self.pic_zoom_future / self.pic_zoom - 1) ** .7 * .2
+        pic_zoom_new = self.pic_zoom * (1 - scale_disproportion * self.transition_stage ** 2) \
+                       + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
+        if pic_zoom_new / self.pic_zoom < 1 and not self.mandelbrot_mode:
+            centering_factor = 1 - scale_disproportion / self.pic_zoom / 10
+            self.pic_pos_future *= centering_factor
+            if self.levels_open:
+                self.pic_pos_future -= (self.window_size[0] / 5) * (1 - centering_factor)
+        self.pic_zoom = pic_zoom_new
+
+        self.pic_angle = self.pic_angle * (1 - 5 * chunk) + self.pic_angle_future * 5 * chunk
+
+    def check_image_vilible(self):
+        correction_vector = mp.mpc()
         if self.mandelbrot_mode:
             border = max(self.window_size[0], self.window_size[1]) * 1.5
-            x_im = self.pic_position[0] - .5 * max(self.window_size[0], self.window_size[1])
+            x_im = self.pic_pos_current.real - .5 * max(self.window_size[0], self.window_size[1])
             if abs(x_im) > border:
-                correction_vector[0] = math.copysign(border, x_im) - x_im
+                correction_vector += math.copysign(border, x_im) - x_im
 
-            if abs(self.pic_position[1]) > border:
-                correction_vector[1] = math.copysign(border, self.pic_position[1]) - self.pic_position[1]
-
+            if abs(self.pic_pos_current.imag) > border:
+                correction_vector += 1j * (math.copysign(border, self.pic_pos_current.imag) - self.pic_pos_current.imag)
         else:
             verts = np.frombuffer(self.ret_vertex_buffer.read(), dtype=np.float32).reshape((4, 2))
             image_bottom, image_top = min(verts[:, 1]), max(verts[:, 1])
             image_left, image_right = min(verts[:, 0]), max(verts[:, 0])
-            speed = 1000 / self.pic_zoom
-            correction_vector[0] -= speed * (image_left * (image_left > 0) + image_right * (image_right < 0))
-            correction_vector[1] -= speed * (image_bottom * (image_bottom > 0) + image_top * (image_top < 0))
-        return correction_vector, abs(np.linalg.norm(correction_vector))
+            speed = - 500 / self.pic_zoom
+            correction_vector += speed * (image_left * (image_left > 0) + image_right * (image_right < 0))
+            correction_vector += speed * (image_bottom * (image_bottom > 0) + image_top * (image_top < 0)) * 1j
 
-    def move_image_inertial(self, dt):
-        correction_vector, its_size = self.check_if_image_in_window()
-        if its_size != 0:
-            self.pic_position_future += correction_vector / 10
+            self.crop_borders_visible[0] = image_left > -1
+            self.crop_borders_visible[1] = image_right < 1
+            self.crop_borders_visible[2] = image_bottom > -1
+            self.crop_borders_visible[3] = image_top < 1
 
-        if self.transition_stage < 1:  # todo: make so that transition_stage doesn't lag behind mouse_move_cumulative
-            transition_step = self.configs[TRANSITION_SPEED] ** 2 * (1.2 - self.transition_stage)
-            self.transition_stage += transition_step / (1 - abs(self.mouse_move_cumulative) / 100)
-            # print(self.transition_stage)
-            if self.transition_stage > .99999:
-                self.transition_stage = 1
-                # self.release_texture(self.image_texture_old)
-                self.release_texture(self.current_texture_old)
-
-        self.pic_position_future += self.pic_position_speed / self.pic_zoom
-        # self.pic_position_2_future += self.pic_position_speed
-        self.pic_position_speed *= .95
-        distance_to_ghost = np.log(1 + np.linalg.norm(self.pic_position - self.pic_position_future))
-        abs_speed = np.log(1 + np.linalg.norm(self.pic_position_speed))
-        sp_sum = distance_to_ghost * self.pic_zoom_future + abs_speed
-        sp_sum2 = .5 + .5 / (math.copysign(1, sp_sum) + 1 / (sp_sum + .01))
-        self.pic_position = self.pic_position * (1 - sp_sum2) + self.pic_position_future * sp_sum2
-        self.pic_position_2 = self.pic_position_2 * .95 + self.pic_position_future * .05
-
-        scale_disproportion = abs(self.pic_zoom_future / self.pic_zoom - 1) ** .7 * .2
-        pic_zoom_new = self.pic_zoom * (1 - scale_disproportion * self.transition_stage ** 2) \
-                       + self.pic_zoom_future * scale_disproportion * self.transition_stage ** 2
-        if pic_zoom_new / self.pic_zoom < 1:
-            centerting_factor = 1 - scale_disproportion / self.pic_zoom / 100
-            self.pic_position_future = self.pic_position_future * centerting_factor
-            if self.levels_open:
-                self.pic_position_future -= np.array((self.window_size[0] / 5, 0)) * (1 - centerting_factor)
-
-        self.pic_zoom = pic_zoom_new
-
-        rotation_disproportion = abs(self.pic_angle_future - self.pic_angle) / 10
-        self.pic_angle = self.pic_angle * (1 - .2) + self.pic_angle_future * .2
-
-        self.update_position()
-
-        if sp_sum + scale_disproportion * 20 + rotation_disproportion + (self.transition_stage < 1) < .1:
-            self.run_move_image_inertial = False
-
-    def move_image(self, d_coord=np.array([0., 0.])):
-        if self.mandelbrot_mode:
-            #  todo: make this window_size-relative
-            d_coord /= 3
-        self.pic_position_speed += d_coord
-        self.pic_position_speed *= .97
-        self.run_move_image_inertial = True
+        return correction_vector
 
     def key_flipping(self, time):
         if self.key_flipping_next_time > time:
@@ -1077,7 +1156,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.levels_edit_band = 0
         self.empty_level_borders()
         self.generate_levels_texture()
-        self.update_position()
+        # self.update_position()
         self.schedule_pop_message(4, 8000000)
 
     def save_current_texture(self, replace):
@@ -1116,12 +1195,12 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def show_curves_interface(self):
         self.levels_open = not self.levels_open
-        self.update_position()
+        # self.update_position()
 
     def reset_pic_position(self, full=True):
         wnd_width, wnd_height = self.wnd.size
         self.pic_zoom_future = min(wnd_width / self.current_texture.width, wnd_height / self.current_texture.height)
-        self.pic_position_future = np.array([-100., 0.], dtype=np.float64)
+        self.pic_pos_future = mp.mpc(-100)
         self.run_move_image_inertial = True
 
         if full:
@@ -1129,9 +1208,9 @@ class ModernSlideShower(mglw.WindowConfig):
             self.unschedule_pop_message(4)
             self.program_id = 1 - self.program_id
             self.pic_zoom = self.pic_zoom_future * self.configs[STARTING_ZOOM_FACTOR]
-            self.pic_position = np.array([0., 0.], dtype=np.float64)
-            self.pic_position_future = np.array([0., 0.], dtype=np.float64)
-            self.pic_position_speed = np.array([0., 0.], dtype=np.float64)
+            self.pic_pos_current = mp.mpc(0)
+            self.pic_pos_future = mp.mpc(0)
+            self.pic_move_speed = mp.mpc(0)
             self.pic_angle = 0.
             self.pic_angle_future = 0.
             self.transition_stage = 0.
@@ -1139,15 +1218,18 @@ class ModernSlideShower(mglw.WindowConfig):
 
             if self.mandelbrot_mode:
                 self.pic_angle_future = -30
+                self.pic_zoom = .1
+                self.pic_zoom_future = .2
 
-        self.update_position()
+        # self.update_position()
 
     def move_picture_with_key(self, time_interval):
-        dx = time_interval * (self.key_picture_movement[1] - self.key_picture_movement[3])
-        dy = time_interval * (self.key_picture_movement[0] - self.key_picture_movement[2])
-        d_coord = np.array([dx, -dy], dtype=np.float64) * 100
+        dx = time_interval * (self.key_picture_movement[1] - self.key_picture_movement[3]) * 100
+        dy = time_interval * (self.key_picture_movement[0] - self.key_picture_movement[2]) * 100
         self.pic_zoom_future *= 1 + (time_interval * (self.key_picture_movement[5] - self.key_picture_movement[4]))
-        self.move_image(d_coord)
+        self.mandel_auto_travel_speed *= 1 + .2 * (
+                time_interval * (self.key_picture_movement[7] - self.key_picture_movement[6]))
+        self.move_image(dx, -dy)
 
     def unschedule_pop_message(self, pop_id):
         for item in self.pop_db:
@@ -1177,6 +1259,34 @@ class ModernSlideShower(mglw.WindowConfig):
             if time > item['end']:
                 self.pop_db.remove(item)
 
+    def mandel_swap_stat_texture(self):
+        self.mandel_stat_texture_id = 1 - self.mandel_stat_texture_id
+        self.mandel_stat_texture[self.mandel_stat_texture_id].bind_to_image(8, read=True, write=True)
+        self.mandel_stat_texture_swapped = True
+
+    def mandel_stat_analysis(self):
+        # start = self.timer.time
+        sum_tex = self.mandel_stat_texture[1 - self.mandel_stat_texture_id].read()
+        # sum_tex = self.mandel_stat_texture[self.mandel_stat_texture_id].read()
+        # sum_tex = np.ones(64*32, dtype=np.uint32)
+        # print(self.timer.time - start)
+        hg = np.frombuffer(sum_tex, dtype=np.uint32).reshape(64, 32).copy(order='F')
+        self.mandel_zones_hg = hg / (hg.max() + 1)
+        self.mandel_stat_texture[1 - self.mandel_stat_texture_id].write(self.mandel_stat_texture_empty)
+        dark_zones, light_zones = np.vsplit(np.flipud(self.mandel_zones_hg), 2)
+        light_zones_sum, dark_zones_sum = float(np.sum(light_zones)), float(np.sum(dark_zones))
+        complexity = -(light_zones_sum - dark_zones_sum)
+        self.mandel_auto_complexity_target = self.mandel_auto_complexity_fill_target - complexity
+        best_zones_table = light_zones * dark_zones * (1 + dark_zones)
+        best_zones_table_blurred = 20 * gaussian_filter(best_zones_table, sigma=6)
+
+        self.mandel_good_zones = best_zones_table * self.mandel_zones_mask * best_zones_table_blurred
+        self.mandel_stat_texture_swapped = False
+
+        if best_zones_table.T[self.mandel_chosen_zone] < best_zones_table.max() * .9:
+            chosen_zone = np.unravel_index(np.argmax(best_zones_table), best_zones_table.shape, order='F')
+            self.mandel_chosen_zone = (chosen_zone[0].item(), chosen_zone[1].item())
+
     def do_auto_flip(self):
         self.mouse_move_cumulative += self.autoflip_speed
         self.run_reduce_flipping_speed = - .15
@@ -1200,12 +1310,23 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.levels_edit_band = self.restrict(self.levels_edit_band, 0, 3)
                 self.virtual_cursor_position *= 0
         elif self.transform_mode:
+            if self.transform_mode == 1:
+                return
             if abs(self.virtual_cursor_position[0]) > 200:
-                self.transform_mode_column = 1 if self.virtual_cursor_position[0] > 0 else 0
+                if self.crop_borders_visible[0] and self.crop_borders_visible[1]:
+                    self.crop_borders_active = 2 if self.virtual_cursor_position[0] > 0 else 1
+                elif self.crop_borders_visible[0]:
+                    self.crop_borders_active = 1
+                elif self.crop_borders_visible[1]:
+                    self.crop_borders_active = 2
                 self.virtual_cursor_position *= 0
             if abs(self.virtual_cursor_position[1]) > 150:
-                self.transform_mode += 1 if self.virtual_cursor_position[1] > 0 else -1
-                self.transform_mode = self.restrict(self.transform_mode, 1, 2)
+                if self.crop_borders_visible[2] and self.crop_borders_visible[3]:
+                    self.crop_borders_active = 3 if self.virtual_cursor_position[1] > 0 else 4
+                elif self.crop_borders_visible[2]:
+                    self.crop_borders_active = 3
+                elif self.crop_borders_visible[3]:
+                    self.crop_borders_active = 4
                 self.virtual_cursor_position *= 0
 
     def mouse_circle_tracking(self, dx, dy):
@@ -1244,16 +1365,16 @@ class ModernSlideShower(mglw.WindowConfig):
             self.previous_image()
         self.run_flip_once = 0
 
-    def reduce_flipping_speed(self, time_frame):
+    def reduce_flipping_speed(self, time_stamp):
         if self.run_reduce_flipping_speed < 0:
-            self.run_reduce_flipping_speed = time_frame + abs(self.run_reduce_flipping_speed)
-        if self.run_reduce_flipping_speed > time_frame:
+            self.run_reduce_flipping_speed = time_stamp + abs(self.run_reduce_flipping_speed)
+        if self.run_reduce_flipping_speed > time_stamp:
             return
         self.mouse_move_cumulative -= math.copysign(self.mouse_unflipping_speed, self.mouse_move_cumulative)
         self.mouse_unflipping_speed = self.mouse_unflipping_speed * .8 + .3
         if abs(self.mouse_move_cumulative) < 5:
             self.run_reduce_flipping_speed = 0
-        self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+        # self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
     def autoflip_toggle(self):
         if self.autoflip_speed == 0:
@@ -1264,12 +1385,9 @@ class ModernSlideShower(mglw.WindowConfig):
             self.schedule_pop_message(10)
 
     def update_position(self):
-        # for name in self.gl_program_pic[self.program_id]:
-        #     member = self.gl_program_pic[self.program_id][name]
-        #     print(name, type(member), member)
-
         texture_size = self.current_texture.size
-        self.gl_program_pic[self.program_id]['displacement'] = tuple(self.pic_position)
+        # self.gl_program_pic[self.program_id]['displacement'] = tuple(self.pic_position)
+        self.gl_program_pic[self.program_id]['displacement'] = (self.pic_pos_current.real, self.pic_pos_current.imag)
         self.gl_program_pic[self.program_id]['pix_size'] = texture_size
         self.gl_program_pic[self.program_id]['wnd_size'] = self.wnd.size
         self.gl_program_pic[self.program_id]['zoom_scale'] = self.pic_zoom
@@ -1283,7 +1401,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_pic[self.program_id]['transition_center'] = self.transition_center
         self.gl_program_pic[1 - self.program_id]['transparency'] = self.transition_stage
 
-        self.gl_program_pic_v['displacement'] = tuple(self.pic_position)
+        self.gl_program_pic_v['displacement'] = (self.pic_pos_current.real, self.pic_pos_current.imag)
+        # self.gl_program_pic[self.program_id]['displacement'] = (self.pic_pos_current.real, self.pic_pos_current.imag)
         self.gl_program_pic_v['pix_size'] = texture_size
         self.gl_program_pic_v['wnd_size'] = self.wnd.size
         self.gl_program_pic_v['zoom_scale'] = self.pic_zoom
@@ -1294,25 +1413,83 @@ class ModernSlideShower(mglw.WindowConfig):
             self.gl_program_pic[self.program_id]['crop'] = tuple(self.crop_borders)
             self.gl_program_crop['pix_size'] = texture_size
             self.gl_program_crop['zoom_scale'] = self.pic_zoom
-            self.gl_program_crop['displacement'] = tuple(self.pic_position)
+            self.gl_program_crop['displacement'] = (self.pic_pos_current.real, self.pic_pos_current.imag)
             self.gl_program_crop['wnd_size'] = self.wnd.size
             self.gl_program_crop['crop'] = tuple(self.crop_borders)
+            self.gl_program_crop['active_border_id'] = self.crop_borders_active
 
         self.gl_program_round['wnd_size'] = self.wnd.size
         self.gl_program_round['displacement'] = tuple(self.round_indicator_cener_pos)
         self.gl_program_round['round_size'] = self.round_indicator_radius
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
-        self.gl_program_mandel['wnd_size'] = self.wnd.size
-        self.gl_program_mandel['pic_position'] = tuple(self.pic_position)
-        self.gl_program_mandel['pic_position_precise'] = tuple(self.pic_position_2)
+        mandel_complexity = abs(self.pic_angle) / 10 + self.mandel_auto_complexity
+        mandel_complexity *= math.log2(self.pic_zoom) * .66 + 10
 
+        # for gl_program in [self.gl_program_mandel, self.gl_program_mandel_b]:
+        #     gl_program['wnd_size'] = self.wnd.size
+        #     gl_program['zoom'] = self.pic_zoom
+        #
+        #     gl_program['complexity'] = mandel_complexity
+        #
+        #     max_win = max(self.wnd.size[0], self.wnd.size[1])
+        #     position_precise = -self.pic_pos_current / max_win
+        #     # aa1 = self.split_complex_3([float(position_precise.real), float(position_precise.imag)])
+        #     aa1 = self.split_complex_3(position_precise)
+        #     # print(aa1)
+        #     # aa2 = self.split_complex_3(aa1[1])
+        #     # aa3 = self.split_complex_3(aa2[1])
+        #
+        #     rounded_tuple = (round(position_precise.real, 15), round(position_precise.imag, 15))
+        #     # rounded_tuple = (position_precise.real, position_precise.imag)
+        #     gl_program['pic_position_1'] = rounded_tuple
+        #     rough_position = gl_program['pic_position_1'].value
+        #     position_precise -= mp.mpc(rough_position[0], rough_position[1])
+        #     # print("new: " + mp.nstr(aa1, 25))
+        #     # print("orig: " + mp.nstr(-self.pic_pos_current / max_win, 25), self.timer.time)
+        #
+        #     rounded_tuple = (round(position_precise.real, 30), round(position_precise.imag, 30))
+        #     # rounded_tuple = (position_precise.real, position_precise.imag)
+        #     gl_program['pic_position_2'] = rounded_tuple
+        #     rough_position = gl_program['pic_position_2'].value
+        #     position_precise -= mp.mpc(rough_position[0], rough_position[1])
+        #     # print("2: "rough_position)
+        #     # print("2: " + mp.nstr(aa2[0], 25), rough_position)
+        #
+        #     rounded_tuple = (position_precise.real, position_precise.imag)
+        #     gl_program['pic_position_3'] = rounded_tuple
+        #     rough_position = gl_program['pic_position_3'].value
+        #     position_precise -= mp.mpc(rough_position[0], rough_position[1])
+        #     # print("3: " + mp.nstr(aa3[0], 25), rough_position)
+        #     # print("result_c: " + mp.nstr(aa3[0]+aa2[0]+aa1[0] + self.pic_pos_current / max_win, 25))
+
+        self.gl_program_mandel['wnd_size'] = self.wnd.size
         self.gl_program_mandel['zoom'] = self.pic_zoom
-        self.gl_program_mandel['complexity'] = abs(self.pic_angle) / 10
+        self.gl_program_mandel['complexity'] = mandel_complexity
+        max_win = max(self.wnd.size[0], self.wnd.size[1])
+        vec4_pos_x, vec4_pos_y = self.split_complex_3(-self.pic_pos_current / max_win)
+        self.gl_program_mandel['pic_positiondd_x'] = tuple(vec4_pos_x)
+        self.gl_program_mandel['pic_positiondd_y'] = tuple(vec4_pos_y)
+
+    def split_complex_3(self, in_value):
+        # split_constant = 67108865  # 2 ^ 26 + 1
+        # split_constant = 1  # 2 ^ 26 + 1
+        out_real, out_imaginary = [], []
+        current_value = in_value
+        for _ in range(4):
+            with mp.workprec(52):
+                t = current_value  # * split_constant
+                c_hi = t - (t - current_value)
+                c_lo = current_value - c_hi
+                out_real.append(float(c_hi.real))
+                out_imaginary.append(float(c_hi.imag))
+            current_value -= c_hi
+        # print(out_real, out_imaginary)
+        return out_real, out_imaginary
 
     def resize(self, width: int, height: int):
         self.imgui.resize(width, height)
-        self.update_position()
+        # self.update_position()
 
     def restrict(self, val, minval, maxval):
         if val < minval: return minval
@@ -1326,7 +1503,7 @@ class ModernSlideShower(mglw.WindowConfig):
                                                               self.config_formats[self.setting_active][1],
                                                               self.config_formats[self.setting_active][0],
                                                               self.config_formats[self.setting_active][1])
-            self.update_position()
+            # self.update_position()
             if self.setting_active == INTER_BLUR:
                 self.gl_program_pic[self.program_id]['transparency'] = .5
                 self.run_move_image_inertial = False
@@ -1342,23 +1519,23 @@ class ModernSlideShower(mglw.WindowConfig):
                 new_value = self.levels_borders[self.levels_edit_band][edit_parameter] + amount
                 self.levels_borders[self.levels_edit_band][edit_parameter] = self.restrict(new_value, 0, 1)
             self.generate_levels_texture(self.levels_edit_band)
-            self.update_position()
-        elif self.transform_mode == 2:  # cropping
-            border_id = self.transform_mode_column * 2 - 1 + self.pressed_mouse & 3
-            opposite_border_id = 2 * self.transform_mode_column - 1 + ((self.pressed_mouse & 3) ^ 3)
-            # print((self.pressed_mouse & 3), (self.pressed_mouse & 3) ^ 3)
-            # print(border_id, opposite_border_id)
-            self.crop_borders[border_id] += -amount * 100 * (1 - 2 * (border_id % 2))
-            if self.crop_borders[border_id] + self.crop_borders[opposite_border_id] + 1 > self.current_texture.size[
-                self.transform_mode_column]:
-                self.crop_borders[opposite_border_id] = self.current_texture.size[self.transform_mode_column] - \
+            # self.update_position()
+        elif self.transform_mode == 2 and self.crop_borders_active:  # cropping
+            border_id = self.crop_borders_active - 1
+            opposite_border_id = border_id - (border_id % 2) + (border_id + 1) % 2
+            self.crop_borders[border_id] += -amount * 100 * (1 - 2 * (border_id % 2)) * self.pressed_mouse ** 3
+            if self.crop_borders[border_id] + self.crop_borders[opposite_border_id] + 1 > \
+                    self.current_texture.size[border_id // 2]:
+                self.crop_borders[opposite_border_id] = self.current_texture.size[border_id // 2] - \
                                                         self.crop_borders[border_id] - 1
-            self.update_position()
+            # self.update_position()
 
     def mouse_position_event(self, x, y, dx, dy):
         if self.setting_active or (self.levels_open and self.levels_enabled) or self.transform_mode:
             self.virtual_mouse_cursor(dx, dy)
             return
+        elif self.mandelbrot_mode:
+            pass
         elif self.autoflip_speed != 0:
             d_coord = dx - dy
             self.autoflip_speed += d_coord / 500 * (1.5 - math.copysign(.5, self.autoflip_speed * d_coord))
@@ -1373,21 +1550,23 @@ class ModernSlideShower(mglw.WindowConfig):
 
         # self.imgui.mouse_drag_event(x, y, dx, dy)
         if self.pressed_mouse == 1:
-            self.move_image(np.array([dx, -dy], dtype=np.float64))
+            self.move_image(dx, -dy)
         elif self.pressed_mouse == 2:
             self.pic_zoom_future *= 1 / (1 + 1.02 ** (- dx + dy)) + .5
-            self.move_image()
         elif self.pressed_mouse == 3:
             self.pic_angle_future += (- dx + dy) / 15
-            self.move_image()
             self.unschedule_pop_message(2)
 
     def mouse_scroll_event(self, x_offset, y_offset):
         if self.mandelbrot_mode:
             self.pic_zoom_future *= 1.3 if y_offset < 0 else .7
-            self.move_image()
             return
-        self.run_flip_once = 1 if y_offset < 0 else -1
+        elif self.transform_mode:
+            self.transform_mode -= 1 if y_offset > 0 else -1
+            self.transform_mode = self.restrict(self.transform_mode, 1, 2)
+            self.crop_borders_active = 0
+        else:
+            self.run_flip_once = 1 if y_offset < 0 else -1
 
     def mouse_press_event(self, x, y, button):
         # self.imgui.mouse_press_event(x, y, button)
@@ -1428,6 +1607,7 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.setting_active = (self.setting_active + 1) % 4
 
             elif self.mandelbrot_mode:
+                # print(key)
                 if key == self.wnd.keys.RIGHT:
                     self.key_picture_movement[3] = True
                     return
@@ -1446,12 +1626,44 @@ class ModernSlideShower(mglw.WindowConfig):
                 elif key in [61, 65451]:  # +
                     self.key_picture_movement[5] = True
                     return
+                elif key == 91:  # [
+                    self.key_picture_movement[6] = True
+                    # print(self.key_picture_movement[6])
+                    return
+                elif key == 93:  # ]
+                    self.key_picture_movement[7] = True
+                    return
+                elif key in [self.wnd.keys.A, self.wnd.keys.SPACE]:
+                    self.mandel_auto_travel_mode = 0 if self.mandel_auto_travel_mode else 1
+                    return
+                elif key == self.wnd.keys.B:
+                    self.mandel_use_beta = not self.mandel_use_beta
+                elif key == self.wnd.keys.D:
+                    self.mandel_show_debug = not self.mandel_show_debug
+                    if self.mandel_show_debug:
+                        self.central_message_showing = 0
+                        self.pic_zoom = 2 ** 100
+                        self.pic_zoom_future = self.pic_zoom
+                        self.pic_pos_future = mp.mpc("1.2926031417650986620649279496560493",
+                                                     "0.43839664593583653478781074400281723")
+                        self.pic_pos_future *= max(self.wnd.height, self.wnd.width)
+                        self.pic_pos_current = self.pic_pos_future
+                        self.pic_angle_future = 26
+                        self.pic_angle = 26
+                        self.mandel_move_acceleration *= 0
+                        self.mandel_look_for_good_zones = False
+                        self.pic_move_speed *= 0
+                    return
+                elif key == self.wnd.keys.Z:
+                    self.mandel_look_for_good_zones = not self.mandel_look_for_good_zones
+                    self.mandel_move_acceleration = 0
+
                 # print(key)
 
             elif self.levels_open:
                 if key == 59:  # ;
                     self.levels_enabled = not self.levels_enabled
-                    self.update_position()
+                    # self.update_position()
                 if key == self.wnd.keys.P:
                     self.previous_level_borders()
                     return
@@ -1510,10 +1722,11 @@ class ModernSlideShower(mglw.WindowConfig):
                 if key == self.wnd.keys.A:
                     self.autoflip_toggle()
                 if key == self.wnd.keys.T:
-                    self.transform_mode = (self.transform_mode + 1) % 2
+                    self.transform_mode = 2 if not self.transform_mode else (self.transform_mode + 1) % 2
                     if self.transform_mode:
                         self.reset_pic_position(False)
-                        self.update_position()
+                        self.pic_zoom_future *= .9
+                        # self.update_position()
                 if key == self.wnd.keys.ENTER:
                     self.save_rotation()
                 if key == self.wnd.keys.SPACE:
@@ -1581,6 +1794,14 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.key_picture_movement[0] = False
                 elif key == self.wnd.keys.DOWN:
                     self.key_picture_movement[2] = False
+                elif key in [self.wnd.keys.MINUS, 65453]:
+                    self.key_picture_movement[4] = False
+                elif key in [61, 65451]:  # +
+                    self.key_picture_movement[5] = False
+                elif key == 91:  # [
+                    self.key_picture_movement[6] = False
+                elif key == 93:  # ]
+                    self.key_picture_movement[7] = False
                 return
 
             if key == self.wnd.keys.SPACE:
@@ -1596,7 +1817,7 @@ class ModernSlideShower(mglw.WindowConfig):
             elif key == 59:  # [;]
                 if self.timer.time - self.last_key_press_time > BUTTON_STICKING_TIME:
                     self.levels_enabled = not self.levels_enabled
-                    self.update_position()
+                    # self.update_position()
 
     def read_and_clear_histo(self):
         hg = np.frombuffer(self.histo_texture.read(), dtype=np.uint32).reshape(5, 256).copy()
@@ -1604,27 +1825,46 @@ class ModernSlideShower(mglw.WindowConfig):
         self.histogram_array = hg.astype(np.float32)
         self.histo_texture.write(self.histo_texture_empty)
 
+    def mandelbrot_routine(self, time: float, frame_time_chunk: float):
+        if self.mandel_show_debug or self.mandel_auto_travel_mode or self.mandel_look_for_good_zones:
+            if self.mandel_stat_texture_swapped:
+                self.mandel_stat_analysis()
+            if time - self.mandel_stat_pull_time > .2 / (self.mandel_auto_travel_speed + .2):
+                self.mandel_stat_pull_time = time
+                self.mandel_swap_stat_texture()
+        if self.mandel_auto_travel_mode:
+            self.mandel_travel(frame_time_chunk)
+        if self.mandel_look_for_good_zones:
+            self.mandel_move_to_good_zone(frame_time_chunk)
+
     def render(self, time: float, frame_time: float):
-        if self.run_move_image_inertial:
-            self.move_image_inertial(time)
-        if not (self.run_reduce_flipping_speed == 0):
+        frame_time_chunk = (frame_time / 3 + .02) ** .5 - .14  # Desmos: \ \left(\frac{x}{3}+.02\right)^{.5}-.14
+        self.compute_movement(frame_time_chunk)
+        self.compute_zoom_rotation(frame_time_chunk)
+        self.pop_message_dispatcher(time)
+        if self.transition_stage < 1:
+            self.compute_transition(frame_time)
+        if abs(self.run_reduce_flipping_speed):
             self.reduce_flipping_speed(time)
-        if not (self.run_flip_once == 0):
+        if abs(self.run_flip_once):
             self.flip_once()
-        if not (self.run_key_flipping == 0):
+        if self.run_key_flipping:
             self.key_flipping(time)
         if True in self.key_picture_movement:
-            self.move_picture_with_key(frame_time)
-        self.pop_message_dispatcher(time)
+            self.move_picture_with_key(frame_time_chunk)
         if self.autoflip_speed != 0 and self.pressed_mouse == 0:
             self.do_auto_flip()
 
+        self.wnd.swap_buffers()
+        self.update_position()
         self.wnd.clear()
-        self.read_and_clear_histo()
 
         if self.mandelbrot_mode:
-            self.picture_vertices4.render(self.gl_program_mandel)
+            self.mandelbrot_routine(time, frame_time_chunk)
+            mandel_program = self.gl_program_mandel_b if self.mandel_use_beta else self.gl_program_mandel
+            self.picture_vertices4.render(mandel_program)
         else:
+            self.read_and_clear_histo()
             if self.transition_stage < 1:
                 if type(self.current_texture_old) is moderngl.texture.Texture:
                     self.current_texture_old.use(5)
@@ -1636,10 +1876,10 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.crop_vao.render(self.gl_program_crop)
             self.picture_vertices4.transform(self.gl_program_pic_v, self.ret_vertex_buffer,
                                              mode=moderngl.POINTS, vertices=4)
-
-        self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
-        self.round_vao.render(self.gl_program_round)
-        self.render_ui(time)
+            self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
+            self.round_vao.render(self.gl_program_round)
+        self.render_ui(time, frame_time)
+        self.average_frame_time = self.average_frame_time * .99 + frame_time * .01
 
     def format_bytes(self, size):
         # 2**10 = 1024
@@ -1653,26 +1893,7 @@ class ModernSlideShower(mglw.WindowConfig):
         ret = f'{f_size:,.0f}'.replace(",", " ") + power_labels[n] + "  (" + f'{size:,d}'.replace(",", " ") + " B)"
         return ret
 
-    def render_ui(self, time):
-        # io = imgui.get_io()
-        # io.config_resize_windows_from_edges = True
-        # new_font = io.fonts.add_font_default()
-        # io.fonts.build()
-        # new_font = io.fonts.add_font_from_file_ttf(
-        #     "c:/Soft/PyCharm Community Edition 2020.1.2/jbr/lib/fonts/DroidSans.ttf", 20,
-        # )
-        # imgui.refresh_font_texture()
-
-        # with imgui.font(new_font):
-
-        # display_size = io.display_size
-
-        # line_height = imgui.get_text_line_height_with_spacing()
-        # imgui.set_next_window_position(io.display_size[0] / 4, io.display_size[1] / 4)
-        # imgui.set_next_window_position(0, 0)
-        # imgui.set_next_window_content_size(io.display_size[0] / 4, line_height * 99)
-        # imgui.set_next_window_size(0, line_height * 15 * 0)
-
+    def render_ui(self, time, frame_time):
         io = imgui.get_io()
         io.ini_file_name = np.empty(0).tobytes()
         imgui.new_frame()
@@ -1775,12 +1996,6 @@ class ModernSlideShower(mglw.WindowConfig):
             imgui.set_window_font_scale(1)
             imgui.end()
 
-        # imgui.push_font(new_font)
-        # imgui.begin("Example: my style editor")
-        # imgui.show_style_editor()
-        # imgui.end()
-        # imgui.pop_font()
-
         if self.central_message_showing:
             imgui.set_next_window_position(io.display_size.x * 0.5, io.display_size.y * 0.5, 1, pivot_x=0.5,
                                            pivot_y=0.5)
@@ -1793,29 +2008,34 @@ class ModernSlideShower(mglw.WindowConfig):
                 imgui.text(text)
             imgui.end()
 
+        def show_info_window(message_top, text_list, win_name):
+            imgui.set_next_window_position(10, message_top, 1, pivot_x=0, pivot_y=0)
+            imgui.begin(win_name, True, im_gui_window_flags)
+            for text in text_list:
+                imgui.text(text)
+            message_top += imgui.get_window_height()
+            imgui.end()
+            return message_top
+
         next_message_top = 10
         if self.show_image_info > 0:
             style.alpha = .7
-
-            def show_info_window(message_top, text_list, win_name):
-                imgui.set_next_window_position(10, message_top, 1, pivot_x=0, pivot_y=0)
-                imgui.begin(win_name, True, im_gui_window_flags)
-                for text in text_list:
-                    imgui.text(text)
-                message_top += imgui.get_window_height()
-                imgui.end()
-                return message_top
-
+            max_win = max(self.wnd.width, self.wnd.height)
             if self.show_image_info == 1:
                 if self.mandelbrot_mode:
                     info_text = [
                         "Mandelbrot mode",
+                        f"Program: {['main', 'beta'][self.mandel_use_beta]}",
                         "Position:",
-                        f"  x: {self.gl_program_mandel['pic_position'].value[0] / self.window_size[0]:.17f}",
-                        f"  y: {self.gl_program_mandel['pic_position'].value[1] / self.window_size[1]:.17f}",
-                        f"Log Zoom: {math.log(self.gl_program_mandel['zoom'].value, 2):.1f}",
+                        " x: " + mp.nstr(-self.pic_pos_current.real / max_win, int(math.log10(self.pic_zoom) + 5)),
+                        " y: " + mp.nstr(-self.pic_pos_current.imag / max_win, int(math.log10(self.pic_zoom) + 5)),
+                        f"Log2 Zoom: {math.log(self.gl_program_mandel['zoom'].value, 2):.1f}",
                         f"Actual Zoom: {self.gl_program_mandel['zoom'].value:,.1f}",
-                        f"Complexity: {self.gl_program_mandel['complexity'].value:.2f}"
+                        f"Base complexity: {abs(self.pic_angle) / 10:.2f}",
+                        f"Auto complexity: {abs(self.mandel_auto_complexity) / 10:.2f}",
+                        f"Resulting complexity: {self.gl_program_mandel['complexity'].value:.2f}",
+                        f"Auto travel speed: {self.mandel_auto_travel_speed:.2f}",
+                        f"FPS: {1 / (self.average_frame_time + .0001):.2f}"
                     ]
                 else:
                     info_text = ["Folder: " + os.path.dirname(self.get_file_path(self.image_index))]
@@ -1833,6 +2053,33 @@ class ModernSlideShower(mglw.WindowConfig):
                                  "Folder #: " + f"{dir_index + 1:d} of {self.dir_count:d}"]
                 next_message_top = show_info_window(next_message_top, info_text, "File props")
             next_message_top += 10
+
+        if self.mandelbrot_mode:
+            if self.mandel_show_debug:
+                next_message_top = show_info_window(next_message_top, ["Automatic Mandelbrot travel mode"],
+                                                    "Mandel Travel")
+                imgui.set_next_window_position(io.display_size.x, io.display_size.y * 0.5, 1, pivot_x=1, pivot_y=0.5)
+                imgui.set_next_window_position(io.display_size.x / 2, io.display_size.y / 2, 1, pivot_x=.5, pivot_y=0.5)
+                imgui.set_next_window_size(0, 0)
+
+                hg_size = (io.display_size.x * .98, (io.display_size.y / 42))
+
+                imgui.set_next_window_bg_alpha(.8)
+                imgui.begin("Levels sett", True, im_gui_window_flags)
+                hg_colors = [0.8, 0.8, 0.8]
+                for hg_num in range(32):
+                    bg_color = .3
+                    # if hg_num == self.levels_edit_band + 1:
+                    #     bg_color = .5
+                    # imgui.text(" Histogram")
+                    imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, bg_color, bg_color, bg_color, bg_color)
+                    imgui.push_style_color(imgui.COLOR_PLOT_HISTOGRAM, hg_colors[0], hg_colors[1], hg_colors[2])
+                    imgui.plot_histogram("", self.mandel_good_zones[hg_num].astype(np.float32), graph_size=hg_size,
+                                         scale_min=0, scale_max=self.mandel_good_zones.max())
+                    # imgui.plot_histogram("", self.mandel_zones_hg[hg_num].astype(np.float32), graph_size=hg_size)
+                    imgui.pop_style_color(2)
+                imgui.set_window_font_scale(1)
+                imgui.end()
 
         if self.transform_mode:
             next_message_top_r = 100
@@ -1879,24 +2126,36 @@ class ModernSlideShower(mglw.WindowConfig):
             imgui.text("Current image size: " + f"{self.current_texture.width} x {self.current_texture.height}")
             imgui.text("New image size: " + f"{new_image_width} x {new_image_height}")
 
-            imgui.text("")
-            imgui.text("Crop from borders")
-            imgui.columns(4)
-            add_cells_with_text([" Left", " Right", "Bottom", "  Top"], [self.transform_mode_column])
             imgui.pop_style_color()
             imgui.pop_style_color()
 
-            for column in range(4):
-                if column // 2 == self.transform_mode_column and self.pressed_mouse & 3 == column % 2 + 1:
-                    bg_color = (.7, .2, .2)
-                elif column // 2 == self.transform_mode_column:
-                    bg_color = (.2, .2, .6)
+            imgui.text("")
+            imgui.text("Crop from borders")
+
+            def push_bg_color(border_id):
+                if border_id == self.crop_borders_active - 1:
+                    r = .7
+                elif self.crop_borders_visible[border_id]:
+                    r = .2
                 else:
-                    bg_color = (.2, .2, .2)
-                imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, bg_color[0], bg_color[1], bg_color[2])
-                imgui.slider_int("", self.crop_borders[column], 0, self.current_texture.size[column // 2], '%d')
-                imgui.pop_style_color()
-                imgui.next_column()
+                    r = 0.
+                imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, r, .2, .2)
+
+            push_bg_color(3)
+            imgui.slider_int("Top", self.crop_borders[3], 0, self.current_texture.size[1], '%d')
+            imgui.pop_style_color()
+            imgui.columns(2)
+            push_bg_color(0)
+            imgui.slider_int("Left", self.crop_borders[0], 0, self.current_texture.size[0], '%d')
+            imgui.pop_style_color()
+            imgui.next_column()
+            push_bg_color(1)
+            imgui.slider_int("Right", self.crop_borders[1], 0, self.current_texture.size[0], '%d')
+            imgui.pop_style_color()
+            imgui.columns(1)
+            push_bg_color(2)
+            imgui.slider_int("Bottom", self.crop_borders[2], 0, self.current_texture.size[1], '%d')
+            imgui.pop_style_color()
 
             imgui.end()
 
@@ -1931,11 +2190,13 @@ def main_loop() -> None:
     window.config = ModernSlideShower(ctx=window.ctx, wnd=window, timer=timer)
 
     timer.start()
+    timer.next_frame()
+    timer.next_frame()
 
     while not window.is_closing:
         current_time, delta = timer.next_frame()
         window.render(current_time, delta)
-        window.swap_buffers()
+        # window.swap_buffers()
 
     _, duration = timer.stop()
     window.destroy()
