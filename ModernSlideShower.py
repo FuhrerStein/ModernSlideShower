@@ -1316,17 +1316,41 @@ class ModernSlideShower(mglw.WindowConfig):
                 if self.crop_borders_visible[0] and self.crop_borders_visible[1]:
                     self.crop_borders_active = 2 if self.virtual_cursor_position[0] > 0 else 1
                 elif self.crop_borders_visible[0]:
-                    self.crop_borders_active = 1
+                    if self.virtual_cursor_position[0] > 0:
+                        if self.crop_borders_visible[3]:
+                            self.crop_borders_active = 4
+                        elif self.crop_borders_visible[2]:
+                            self.crop_borders_active = 3
+                    else:
+                        self.crop_borders_active = 1
                 elif self.crop_borders_visible[1]:
-                    self.crop_borders_active = 2
+                    if self.virtual_cursor_position[0] < 0:
+                        if self.crop_borders_visible[3]:
+                            self.crop_borders_active = 4
+                        elif self.crop_borders_visible[2]:
+                            self.crop_borders_active = 3
+                    else:
+                        self.crop_borders_active = 2
                 self.virtual_cursor_position *= 0
             if abs(self.virtual_cursor_position[1]) > 150:
                 if self.crop_borders_visible[2] and self.crop_borders_visible[3]:
                     self.crop_borders_active = 3 if self.virtual_cursor_position[1] > 0 else 4
                 elif self.crop_borders_visible[2]:
-                    self.crop_borders_active = 3
+                    if self.virtual_cursor_position[1] < 0:
+                        if self.crop_borders_visible[0]:
+                            self.crop_borders_active = 1
+                        elif self.crop_borders_visible[1]:
+                            self.crop_borders_active = 2
+                    else:
+                        self.crop_borders_active = 3
                 elif self.crop_borders_visible[3]:
-                    self.crop_borders_active = 4
+                    if self.virtual_cursor_position[1] > 0:
+                        if self.crop_borders_visible[0]:
+                            self.crop_borders_active = 1
+                        elif self.crop_borders_visible[1]:
+                            self.crop_borders_active = 2
+                    else:
+                        self.crop_borders_active = 4
                 self.virtual_cursor_position *= 0
 
     def mouse_circle_tracking(self, dx, dy):
