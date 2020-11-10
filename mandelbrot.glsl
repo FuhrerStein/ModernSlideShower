@@ -3,52 +3,15 @@
 #if defined VERTEX_SHADER
 
 layout(location = 0) in vec2 in_position;
-//layout(location = 1) in vec2 in_texcoord;
-
-//out vec2 uv0;
 
 void main() {
-//    uv0 = in_texcoord - .5;
-    gl_Position = vec4(in_position.x, in_position.y, 1, 1);
+    gl_Position = vec4(in_position, 0, 1);
 }
 
 
 #elif defined FRAGMENT_SHADER
 
 #define split_constant 67108865  // 2^26+1
-#define prezoom 1e-3
-#define highdef 0
-
-layout(binding=5) uniform sampler2D texture0;
-layout(binding=6) uniform sampler2D texture_curve;
-layout(binding=8, r32ui) uniform uimage2D histogram_texture;
-
-uniform bool useCurves;
-uniform bool count_histograms;
-//in vec2 uv0;
-uniform float zoom;
-uniform float complexity;
-uniform dvec2 wnd_size;
-uniform dvec2 pic_position_1;
-uniform dvec2 pic_position_2;
-uniform dvec2 pic_position_3;
-
-uniform dvec4 pic_positiondd_x;
-uniform dvec4 pic_positiondd_y;
-
-int n;
-
-//double a;
-//double b;
-//double b_next;
-
-float red;
-float green;
-float blue;
-
-float a1;
-float a2;
-float a3;
 
 dvec2 two_sum(double a, double b){
     double s = a + b;
@@ -230,24 +193,43 @@ dvec2 vec_sqr_simple_1(dvec2 a){
 }
 
 
+#define prezoom 1e-3
+#define highdef 0
+
+//layout(binding=5) uniform sampler2D texture0;
+//layout(binding=6) uniform sampler2D texture_curve;
+layout(binding=8, r32ui) uniform uimage2D histogram_texture;
+
+uniform float zoom;
+uniform float complexity;
+uniform dvec2 wnd_size;
+
+uniform dvec4 pic_positiondd_x;
+uniform dvec4 pic_positiondd_y;
+
+int n;
+
+float red;
+float green;
+float blue;
+
+float a1;
+float a2;
+float a3;
+
 void main() {
     n = 0;
 
-    float final_step2 = 0;
     float final_step_sum = 0;
     float pre_final_step = 0;
     double final_step = 0;
 
     dvec2 va = dvec2(0);
     dvec2 vb = dvec2(0);
-//    dvec2 va_sqr = dvec2(0);
     dvec2 vb_sqr = dvec2(0);
-//    dvec2 vb_n = dvec2(0);
 
-//    dvec2 coord_x_var = two_prod(wnd_size.x * uv0.x, prezoom / zoom);
-//    dvec2 coord_y_var = two_prod(wnd_size.y * uv0.y, prezoom / zoom);
-    dvec2 coord_x_var = two_prod(gl_FragCoord.x, prezoom / zoom);
-    dvec2 coord_y_var = two_prod(gl_FragCoord.y, prezoom / zoom);
+    dvec2 coord_x_var = two_prod(gl_FragCoord.x - wnd_size.x / 2, prezoom / zoom);
+    dvec2 coord_y_var = two_prod(gl_FragCoord.y - wnd_size.y / 2, prezoom / zoom);
 
     #if (1 - highdef)
         coord_x_var = two_vec_add_vec4(coord_x_var, pic_positiondd_x.xy);
@@ -261,6 +243,8 @@ void main() {
     {
         pre_final_step = float(final_step);
         final_step = length(dvec2(va.x, vb.x));
+//        final_step = length(dvec2(va.x, vb.x)) * distance(va.x, vb.x);
+//        final_step = distance(va.x, vb.x);
 
         vb_sqr = -vec_sqr_simple_1(vb);
         vb = two_vec_prod_fma_s(2 * va, vb);
@@ -279,13 +263,13 @@ void main() {
         n++;
     }
 
-    int n_was_bigger = int(step(n, complexity * .95) * 32);
-    ivec2 cluster_coord = ivec2((gl_FragCoord.xy / wnd_size) * 32) + ivec2(0, n_was_bigger);
+    int n_was_bigger = int(step(n, complexity - 1) * 32);
+    ivec2 cluster_coord = ivec2(gl_FragCoord.xy / wnd_size * 32) + ivec2(0, n_was_bigger);
 
     imageAtomicAdd(histogram_texture, cluster_coord, 1u);
     float floatmaxIt = float(complexity);
     a1 = smoothstep(0, 40, pre_final_step * (20 - pre_final_step));
-    a1 = smoothstep(0, 40, final_step2 * (20 - final_step2));
+//    a1 = smoothstep(0, 40, final_step2 * (20 - final_step2));
 //    a1 = smoothstep(0, 10000, final_step2 );
 //    a1 = smoothstep(0, 10, final_step2 );
 //    a1 = smoothstep(0, 1, sin(final_step2 * 1000) );
@@ -297,42 +281,13 @@ void main() {
 //    a1 = smoothstep(-10000, 10000, (final_step_sum * 1) ) * smoothstep(0, (floatmaxIt - n), pre_final_step);
     a2 = (pre_final_step - 10) * (float(complexity) - n - pre_final_step);
     a2 = smoothstep(-50, (floatmaxIt - n) * (floatmaxIt - n - 10), a2) * 2;
-    a3 = smoothstep(0, (floatmaxIt - n), pre_final_step);
-
-    gl_FragColor  = vec4(a2 * 0.4, a2 * .4, a2 * 1, 1);
+    a3 = smoothstep(0, (complexity - n), pre_final_step);
     gl_FragColor  = vec4(-a3 * 0.1 + a1 * .1, a2 * .7 - a3*.2, a2 * 1, 1);
-//    gl_FragColor  = vec4(a3 * 0.1 + a1 * .1, a2 * .7 + a3 *.2, a3 * 1, 1);
+    //    gl_FragColor  = vec4(a3 * 0.1 + a1 * .1, a2 * .7 + a3 *.2, a3 * 1, 1);
 
-    //
-    //    if(useCurves)
-    //    {
-    //        // local by-color curves
-    //        tempColor.r = texelFetch(texture_curve, ivec2((tempColor.r * 255 + .5), 1), 0).r;
-    //        tempColor.g = texelFetch(texture_curve, ivec2((tempColor.g * 255 + .5), 2), 0).r;
-    //        tempColor.b = texelFetch(texture_curve, ivec2((tempColor.b * 255 + .5), 3), 0).r;
-    //
-    //        // global curves
-    //        tempColor.r = texelFetch(texture_curve, ivec2((tempColor.r * 255 + .5), 0), 0).r;
-    //        tempColor.g = texelFetch(texture_curve, ivec2((tempColor.g * 255 + .5), 0), 0).r;
-    //        tempColor.b = texelFetch(texture_curve, ivec2((tempColor.b * 255 + .5), 0), 0).r;
-    //    }
-    //
-    //    if(count_histograms)
-    //    {
-    //        // gray histogram
-    //        // formula is not perfect and needs to be updated to account for 1.0 - 255 conversion
-    //        int gray_value = int((tempColor.r * 299 + tempColor.g * 587 + tempColor.b * 114) * 51 / 200);
-    //        imageAtomicAdd(histogram_texture, ivec2(gray_value, 0), 1u);
-    //
-    //        // red, green and blue histograms
-    //        // todo: use fma()
-    //        imageAtomicAdd(histogram_texture, ivec2(tempColor.r * 255 + .5, 2), 1u);
-    //        imageAtomicAdd(histogram_texture, ivec2(tempColor.g * 255 + .5, 3), 1u);
-    //        imageAtomicAdd(histogram_texture, ivec2(tempColor.b * 255 + .5, 4), 1u);
-    //    }
-
-    //    fragColor = vec4(tempColor.rgb, tran_alpha * translucency * to_edge);
-    //    fragColor = vec4(tempColor, 1);
+    a2 = smoothstep(0, float(final_step), complexity - n);
+    a2 = smoothstep(0, 1, complexity - n - pre_final_step);
+    gl_FragColor  = vec4(a2 * 0.4, a2 * .4, a2 * 1, 1);
 }
 
-    #endif
+#endif
