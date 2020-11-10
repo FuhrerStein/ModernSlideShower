@@ -3,13 +3,13 @@
 #if defined VERTEX_SHADER
 
 layout(location = 0) in vec2 in_position;
-layout(location = 1) in vec2 in_texcoord;
+//layout(location = 1) in vec2 in_texcoord;
 
-out vec2 uv0;
+//out vec2 uv0;
 
 void main() {
-    uv0 = in_texcoord - .5;
-    gl_Position = vec4(in_position.x, -in_position.y, 1, 1);
+//    uv0 = in_texcoord - .5;
+    gl_Position = vec4(in_position.x, in_position.y, 1, 1);
 }
 
 
@@ -25,7 +25,7 @@ layout(binding=8, r32ui) uniform uimage2D histogram_texture;
 
 uniform bool useCurves;
 uniform bool count_histograms;
-in vec2 uv0;
+//in vec2 uv0;
 uniform float zoom;
 uniform float complexity;
 uniform dvec2 wnd_size;
@@ -244,8 +244,10 @@ void main() {
     dvec2 vb_sqr = dvec2(0);
 //    dvec2 vb_n = dvec2(0);
 
-    dvec2 coord_x_var = two_prod(wnd_size.x * uv0.x, prezoom / zoom);
-    dvec2 coord_y_var = two_prod(wnd_size.y * uv0.y, prezoom / zoom);
+//    dvec2 coord_x_var = two_prod(wnd_size.x * uv0.x, prezoom / zoom);
+//    dvec2 coord_y_var = two_prod(wnd_size.y * uv0.y, prezoom / zoom);
+    dvec2 coord_x_var = two_prod(gl_FragCoord.x, prezoom / zoom);
+    dvec2 coord_y_var = two_prod(gl_FragCoord.y, prezoom / zoom);
 
     #if (1 - highdef)
         coord_x_var = two_vec_add_vec4(coord_x_var, pic_positiondd_x.xy);
@@ -278,7 +280,7 @@ void main() {
     }
 
     int n_was_bigger = int(step(n, complexity * .95) * 32);
-    ivec2 cluster_coord = ivec2((uv0 + .5) * 32) + ivec2(0, n_was_bigger);
+    ivec2 cluster_coord = ivec2((gl_FragCoord.xy / wnd_size) * 32) + ivec2(0, n_was_bigger);
 
     imageAtomicAdd(histogram_texture, cluster_coord, 1u);
     float floatmaxIt = float(complexity);
