@@ -12,11 +12,18 @@ Key features:
   * Previous/next image.
   * First image in current folder
   * First image in previous/next folder
-  * Random image in the whole list
+  * Random image
+    * Random image in the whole list
+    * Random image in current folder
+    * First image in random folder
+    * Random image in random folder
 * **Automatic image swithing (slideshow),** where you can change switching speed on the go.
-* **Image rotation.** Option to rotate by 90° angles, as well as by arbitrary angle.
+* **Image rotation on the screen.** Option to rotate by 90° angles, as well as by arbitrary angle.
 * **Lossless jpeg rotation.** Using free third-party utility [jpegtran](https://sourceforge.net/projects/libjpeg-turbo/files/2.0.5/)
-
+* **Basic image editing**
+  * Levels adjustment all colors as well as R, G, B separately.
+  * Image resize, crop, and rotation
+* **Fractal mode**, with ability to zoom up to 2^100 with usable framerate on average hardware.
 
 
 ## Installation
