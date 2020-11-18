@@ -17,20 +17,20 @@ Key features:
     * Random image in current folder
     * First image in random folder
     * Random image in random folder
-* **Automatic image swithing (slideshow),** where you can change switching speed on the go.
+* **Automatic image swithing (slideshow),** where you can change switching speed on the go and visual indicator till next switch.
 * **Image rotation on the screen.** Option to rotate by 90° angles, as well as by arbitrary angle.
 * **Lossless jpeg rotation.** Using free third-party utility [jpegtran](https://sourceforge.net/projects/libjpeg-turbo/files/2.0.5/)
 * **Basic image editing**
-  * Levels adjustment all colors as well as R, G, B separately.
+  * Levels adjustment for all colors at once as well as for R, G, B separately.
   * Image resize, crop, and rotation
-* **Fractal mode**, with ability to zoom up to 2^100 with usable framerate on average hardware.
+* **Fractal mode**, showind mandelbrot set with ability to zoom up to 2^100 with usable framerate on average hardware.
 
 
 ## Installation
 1. Install Python (~30 MB installer size)
 https://www.python.org/downloads/
 
-1. Download all project files and unpack them in a folder of your choice.
+1. Download all project files and unpack them into a folder of your choice.
 
 1. Install required Python modules (~100 MB).
 
@@ -38,7 +38,7 @@ https://www.python.org/downloads/
 
   Or just double-click **install requirements.cmd** if you are using Windows.
   
-  To be able to save losslessly rotated jpeg files, put jpegtran.exe into folder with this program (Windows only)
+  To be able to save losslessly rotated jpeg files, put [jpegtran.exe](https://sourceforge.net/projects/libjpeg-turbo/files/2.0.5/) into folder with this program (Windows only)
 
 ## Usage
 Run program by launching ModernSlideShower.py
@@ -46,6 +46,7 @@ Run program by launching ModernSlideShower.py
 To open a folder (and all of its subfolders) with images, pass it as an argument:
 
 ``` ModernSlideShower.py d:\Pics\Elephants```
+Alternately, under windows, drag-and-drop a folder on a shortcut to ModernSlideShower
 
 To run in windowed mode (rather than fullscreen, which is default, pass -f command line ardument:
 
