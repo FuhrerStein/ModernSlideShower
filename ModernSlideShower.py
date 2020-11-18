@@ -72,13 +72,12 @@ LEVEL_BORDER_NAMES = [
 
 #    todo: show compression and decompression times when saving/loading lists
 
-#    todo: correlate transition speed with actual flipping rate
 #    todo: save settings to file
 #    todo: program icon
 #    todo: shortcuts everywhere <- rewrite this to be more specific
 #    todo: filelist position indicator
 #    todo: show full image info
-#    todo: explain about jpegtan in case it was not found
+#    todo: explain about jpegtran in case it was not found
 #    todo: interface to adjust curves
 #    todo: different color curves
 #    todo: zooming slideshow mode
@@ -91,6 +90,7 @@ LEVEL_BORDER_NAMES = [
 #    todo: tutorial mode to teach user how to use program
 #    todo: when rotating, crop with widest possible borders
 
+#    todone: correlate transition speed with actual flipping rate
 #    todone: intuitive centering during unzoom
 #    todone: dialog to edit settings
 #    todone: use 4-point sampling to generate fake texture on extreme zoom
@@ -729,6 +729,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.current_texture = self.image_texture
         self.image_index = self.new_image_index
 
+        self.mouse_move_cumulative *= .05
         self.reset_pic_position()
         self.check_folder_change()
 
@@ -861,13 +862,12 @@ class ModernSlideShower(mglw.WindowConfig):
         step = frame_time_chunk * 10
         rate = sigmoid(self.pic_zoom_future, 0, 1000) / 1000
 
-        complexity_goal = self.mandel_auto_complexity_target
+        complexity_goal = self.mandel_auto_complexity_target / 1000
         self.mandel_auto_complexity *= 1 - chunk10 * rate
         self.mandel_auto_complexity += self.mandel_auto_complexity_speed * chunk10 * rate
-        rate *= 1.02 + 20 * sigmoid(self.mandel_auto_complexity_target / 1000 - self.mandel_auto_complexity_speed, -.05,
-                                    .01)
+        rate *= 1.02 + 20 * sigmoid(complexity_goal - self.mandel_auto_complexity_speed, -.05, .01)
         self.mandel_auto_complexity_speed *= 1 - chunk10 * rate
-        self.mandel_auto_complexity_speed += self.mandel_auto_complexity_target * chunk10 * rate / 1000
+        self.mandel_auto_complexity_speed += complexity_goal * chunk10 * rate
         # print(f"{self.mandel_auto_complexity_target / 1000 - self.mandel_auto_complexity_speed:.3f}")
 
     def move_image(self, dx=0, dy=0):
@@ -875,8 +875,10 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def compute_transition(self, frame_time):
         # todo: make so that transition_stage doesn't lag behind mouse_move_cumulative
-        transition_step = self.configs[TRANSITION_SPEED] ** 2 * (1.2 - self.transition_stage)
-        self.transition_stage += transition_step / (1 - abs(self.mouse_move_cumulative) / 100)
+        transition_step = (1.2 - self.transition_stage) * self.configs[TRANSITION_SPEED] ** 2
+        to_target_stage = abs(self.mouse_move_cumulative) / 100 - self.transition_stage
+        self.transition_stage += .1 * to_target_stage * (to_target_stage > 0)
+        self.transition_stage += transition_step
         if self.transition_stage > .99999:
             self.transition_stage = 1
             self.release_texture(self.current_texture_old)
@@ -1259,7 +1261,6 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
     def flip_once(self):
-        self.mouse_move_cumulative *= .05
 
         if self.run_flip_once == 1:
             self.next_image()

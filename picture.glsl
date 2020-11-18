@@ -286,7 +286,7 @@ void main() {
     // Edges and transitions
     float hide_borders_m = hide_borders * is_eq(0, render_mode);
     to_edge = (1 - abs(2 * uv0 - 1)) * pix_size * zoom_scale;
-    to_edge = smoothstep(0, hide_borders_m + actual_blur, to_edge);
+    to_edge = smoothstep(0, hide_borders_m + inter_blur * tran_blur * 5, to_edge);
     to_edge = pow(to_edge, vec2(.3));
     to_edge_a = smoothstep(0, 1, to_edge.x + to_edge.y) * smoothstep(0, 1, to_edge.x * to_edge.y);
 
