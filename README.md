@@ -46,7 +46,8 @@ Run program by launching ModernSlideShower.py
 To open a folder (and all of its subfolders) with images, pass it as an argument:
 
 ``` ModernSlideShower.py d:\Pics\Elephants```
-Alternately, under windows, drag-and-drop a folder on a shortcut to ModernSlideShower
+
+Alternately, under windows, drag-and-drop a folder on a shortcut of ModernSlideShower
 
 To run in windowed mode (rather than fullscreen, which is default, pass -f command line ardument:
 
