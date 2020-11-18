@@ -205,8 +205,8 @@ class ModernSlideShower(mglw.WindowConfig):
     mouse_move_atangent_delta = 0.
     mouse_move_cumulative = 0.
     mouse_unflipping_speed = 1.
-    round_indicator_cener_pos = 70, 70
-    round_indicator_radius = 40
+    # round_indicator_cener_pos = 70, 70
+    # round_indicator_radius = 40
     last_image_folder = None
 
     transition_center = (.4, .4)
@@ -391,7 +391,6 @@ class ModernSlideShower(mglw.WindowConfig):
             return program_text
 
         picture_program_text = get_program_text('picture.glsl')
-        round_program_text = get_program_text('round.glsl')
         mandel_program_text = get_program_text('mandelbrot.glsl')
 
         dummy_program = moderngl_window.meta.ProgramDescription()
@@ -401,12 +400,14 @@ class ModernSlideShower(mglw.WindowConfig):
 
         picture_vertex_text = program_source('VERTEX_SHADER', "picture_vertex", picture_program_text).source
         crop_fragment_text = program_source('CROP_FRAGMENT', "crop_fragment", picture_program_text).source
+        round_vertex_text = program_source('ROUND_VERTEX', "round_vertex", picture_program_text).source
+        round_fragment_text = program_source('ROUND_FRAGMENT', "round_fragment", picture_program_text).source
 
         shaders = program_single(dummy_program, picture_program_text)
         self.gl_program_pic = [shaders.create(), shaders.create()]
         self.gl_program_borders = self.ctx.program(vertex_shader=picture_vertex_text, varyings=['gl_Position'])
         self.gl_program_crop = self.ctx.program(vertex_shader=picture_vertex_text, fragment_shader=crop_fragment_text)
-        self.gl_program_round = program_single(dummy_program, round_program_text).create()
+        self.gl_program_round = self.ctx.program(vertex_shader=round_vertex_text, fragment_shader=round_fragment_text)
         self.gl_program_mandel = program_single(dummy_program, mandel_program_text).create()
 
         self.mandel_stat_texture = [self.ctx.texture((32, 64), 4), self.ctx.texture((32, 64), 4)]
@@ -461,16 +462,16 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def generate_round_geometry(self):
         points_count = 50
-        points_array_x = np.sin(np.linspace(0., math.pi * 2, points_count, endpoint=False))
-        points_array_y = np.cos(np.linspace(0., math.pi * 2, points_count, endpoint=False))
+        points_array_x = np.sin(np.linspace(0., math.tau, points_count, endpoint=False))
+        points_array_y = np.cos(np.linspace(0., math.tau, points_count, endpoint=False))
         points_array = np.empty((100,), dtype=points_array_x.dtype)
         points_array[0::2] = points_array_x
         points_array[1::2] = points_array_y
-        indices_array_p = np.arange(50, dtype=np.int32)
+        points_array *= 40
+        points_array += 70
 
         self.round_vao = mglw.opengl.vao.VAO("round", mode=moderngl.POINTS)
         self.round_vao.buffer(points_array.astype('f4'), '2f', ['in_position'])
-        self.round_vao.buffer(indices_array_p, 'i', ['in_index'])
 
     def update_levels(self, edit_parameter=None):
         if edit_parameter is None:
@@ -1350,8 +1351,6 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_borders['process_type'] = 1
 
         self.gl_program_round['wnd_size'] = self.wnd.size
-        self.gl_program_round['displacement'] = tuple(self.round_indicator_cener_pos)
-        self.gl_program_round['round_size'] = self.round_indicator_radius
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
         if self.transform_mode:

@@ -196,8 +196,6 @@ dvec2 vec_sqr_simple_1(dvec2 a){
 #define prezoom 1e-3
 #define highdef 0
 
-//layout(binding=5) uniform sampler2D texture0;
-//layout(binding=6) uniform sampler2D texture_curve;
 layout(binding=8, r32ui) uniform uimage2D histogram_texture;
 
 uniform float zoom;

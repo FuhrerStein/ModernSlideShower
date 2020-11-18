@@ -1,7 +1,5 @@
 #version 430
 
-#define inter_pixel_gap .001925// origin unknown, chosen experimentaly
-
 int is_eq(int a, int b){
     return 1 - sign(abs(a - b));
 }
@@ -10,46 +8,34 @@ int is_neq(int a, int b){
     return sign(abs(a - b));
 }
 
-float get_gray(vec4 pixel_color){
-    return pixel_color.r * .299 + pixel_color.g * .587 + pixel_color.b * .114;
-}
-
-double get_gray(dvec4 pixel_color){
-    return pixel_color.r * .299 + pixel_color.g * .587 + pixel_color.b * .114;
-}
-
-float smootherstep(float edge0, float edge1, float x) {
-    // Scale, and clamp x to 0..1 range
-    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    // Evaluate polynomial
-    return x * x * x * (x * (x * 6 - 15) + 10);
-}
-
-double smootherstep(double edge0, double edge1, double x) {
-    // Scale, and clamp x to 0..1 range
-    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    // Evaluate polynomial
-    return x * x * x * (x * (x * 6 - 15) + 10);
-}
-
-dvec2 smootherstep(double edge0, double edge1, dvec2 x) {
-    // Scale, and clamp x to 0..1 range
-    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    // Evaluate polynomial
-    return x * x * x * (x * (x * 6 - 15) + 10);
-}
-
-dvec2 smootherstep01(dvec2 x1) {
-    // Scale, and clamp x to 0..1 range
-    dvec2 x = clamp(x1, 0.0, 1.0);
-    // Evaluate polynomial
-    return x * x * x * (x * (x * 6 - 15) + 10);
-}
-
-// unclamped average between smoothstep and smootherstep
-dvec2 smootherstep_ease(dvec2 x) {
-    return x * x * (x * (x * (x * 6 - 15) + 8) + 3) / 2;
-}
+//
+//float smootherstep(float edge0, float edge1, float x) {
+//    // Scale, and clamp x to 0..1 range
+//    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+//    // Evaluate polynomial
+//    return x * x * x * (x * (x * 6 - 15) + 10);
+//}
+//
+//double smootherstep(double edge0, double edge1, double x) {
+//    // Scale, and clamp x to 0..1 range
+//    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+//    // Evaluate polynomial
+//    return x * x * x * (x * (x * 6 - 15) + 10);
+//}
+//
+//dvec2 smootherstep(double edge0, double edge1, dvec2 x) {
+//    // Scale, and clamp x to 0..1 range
+//    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+//    // Evaluate polynomial
+//    return x * x * x * (x * (x * 6 - 15) + 10);
+//}
+//
+//dvec2 smootherstep01(dvec2 x1) {
+//    // Scale, and clamp x to 0..1 range
+//    dvec2 x = clamp(x1, 0.0, 1.0);
+//    // Evaluate polynomial
+//    return x * x * x * (x * (x * 6 - 15) + 10);
+//}
 
 
     #if defined VERTEX_SHADER
@@ -143,7 +129,7 @@ void main() {
 
     #define sub_pixel_distance .45
     #define PI 3.1415926538
-
+    #define inter_pixel_gap .001925// origin unknown, chosen experimentaly
 
 
 //layout(binding=10) uniform sampler2D texture_hd_r;
@@ -189,6 +175,19 @@ vec2 to_edge;
 dvec4 pixel_color_hd;
 vec4 pixel_color;
 
+
+float get_gray(vec4 pixel_color){
+    return pixel_color.r * .299 + pixel_color.g * .587 + pixel_color.b * .114;
+}
+
+double get_gray(dvec4 pixel_color){
+    return pixel_color.r * .299 + pixel_color.g * .587 + pixel_color.b * .114;
+}
+
+// unclamped average between smoothstep and smootherstep
+dvec2 smootherstep_ease(dvec2 x) {
+    return x * x * (x * (x * (x * 6 - 15) + 8) + 3) / 2;
+}
 
 double pixel_bands_mixed(vec4 four_pix, dvec2 in_pixel_coords)
 {
@@ -313,6 +312,37 @@ in vec2 real_pic_size;
 void main() {
     float alpha = 2 * abs(((displacement * zoom_scale + wnd_size - 2 * gl_FragCoord.xy) / real_pic_size)[work_axis]);
     fragColor = vec4(vec3(.8) + border_color * vec3(.2, -.3, -.3), alpha);
+}
+
+#elif defined ROUND_VERTEX
+#define point_size 25
+#define round_alpha .15
+
+layout(location = 0) in vec2 in_position;
+
+uniform vec2 wnd_size;
+uniform int finish_n;
+
+out float alpha;
+
+void main() {
+    float point_n_norm = mod(gl_VertexID, 25) * 4;
+    float s1 = smoothstep(100 + finish_n * 1.1, 120 + finish_n * 1.2, point_n_norm);
+    float s2 = smoothstep(finish_n - 10, finish_n * 1.1, point_n_norm);
+    alpha = round_alpha * (s1 + 1 - s2);
+
+    gl_Position = vec4(in_position / wnd_size - 1, .5, 1.0);
+    gl_PointSize = point_size;
+}
+
+#elif defined ROUND_FRAGMENT
+
+in float alpha;
+out vec4 fragColor;
+
+void main() {
+    fragColor = vec4(1);
+    fragColor.a = alpha - pow(distance(gl_PointCoord.xy, vec2(0.5)), 2.5);
 }
 
     #endif
