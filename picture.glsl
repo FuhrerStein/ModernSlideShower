@@ -1,69 +1,106 @@
 #version 430
 
-int is_eq(int a, int b){
-    return 1 - sign(abs(a - b));
-}
 
-int is_neq(int a, int b){
-    return sign(abs(a - b));
-}
-
-//
-//float smootherstep(float edge0, float edge1, float x) {
-//    // Scale, and clamp x to 0..1 range
-//    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-//    // Evaluate polynomial
-//    return x * x * x * (x * (x * 6 - 15) + 10);
-//}
-//
-//double smootherstep(double edge0, double edge1, double x) {
-//    // Scale, and clamp x to 0..1 range
-//    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-//    // Evaluate polynomial
-//    return x * x * x * (x * (x * 6 - 15) + 10);
-//}
-//
-//dvec2 smootherstep(double edge0, double edge1, dvec2 x) {
-//    // Scale, and clamp x to 0..1 range
-//    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-//    // Evaluate polynomial
-//    return x * x * x * (x * (x * 6 - 15) + 10);
-//}
-//
-//dvec2 smootherstep01(dvec2 x1) {
-//    // Scale, and clamp x to 0..1 range
-//    dvec2 x = clamp(x1, 0.0, 1.0);
-//    // Evaluate polynomial
-//    return x * x * x * (x * (x * 6 - 15) + 10);
-//}
-
-
-    #if defined VERTEX_SHADER
-
-layout(location = 0) in vec2 in_position;
-
-layout(binding=5) uniform sampler2D texture0;
-
+    #if defined PICTURE_VETREX
+layout(binding=5) uniform sampler2D image_texture;
 uniform vec2 displacement;
 uniform vec2 wnd_size;
 uniform float zoom_scale;
 uniform float angle;
-uniform float show_amount;
-uniform float transparency;
 uniform float resize_xy;
 uniform float resize_x;
 uniform float resize_y;
-uniform bool one_by_one;
-uniform int active_border_id;
 uniform vec4 crop;
 uniform int process_type;
-// 0: picture
-// 1: border
-// 2: crop interface
-uniform int render_mode;
-// 0: normal mode
-// 1: transform preview mode
-// 2: render transform mode
+// 0: draw picture
+// 1: draw picture in transform preview mode
+// 2: transform render mode
+// 3:
+// 4: apply levels
+
+out global_data{
+    vec2 point_coords[4];
+    vec2 uv_coords[4];
+    vec4 crop_borders;
+
+    float translucency;
+    float f_show_amount;
+    float min_edge;
+    float max_edge;
+    float tran_blur;
+};
+
+// todo: refactor this
+uniform float show_amount;
+uniform float transparency;
+
+vec4 points_x = vec4(-1, 1, -1, 1);
+vec4 points_y = vec4(-1, -1, 1, 1);
+
+vec2 tex_size;
+vec2 whole_resize;
+mat2 rotate_mat;
+vec2 tex_resized;
+vec4 pix_extremes;
+
+void transform_point(int point_id) {
+    vec2 point_coord_0 = vec2(points_x[point_id], points_y[point_id]);
+    uv_coords[point_id] = (point_coord_0 + 1) / 2;
+    vec2 point_coord = (point_coord_0 * tex_resized * rotate_mat + displacement) * zoom_scale / wnd_size;
+    point_coords[point_id] = ((process_type == 4) ? point_coord_0 : point_coord);
+    pix_extremes.xy = min(pix_extremes.xy, point_coord);
+    pix_extremes.zw = max(pix_extremes.zw, point_coord);
+}
+
+void main() {
+
+    tex_size = textureSize(image_texture, 0);
+    whole_resize = vec2((resize_xy + 1.) * (resize_x + 1.), (resize_xy + 1.) * (resize_y + 1.));
+    rotate_mat = mat2(cos(angle), - sin(angle), sin(angle), cos(angle));
+    tex_resized = tex_size * whole_resize;
+
+    transform_point(0);
+    pix_extremes = vec4(point_coords[0], point_coords[0]);
+    transform_point(1);
+    transform_point(2);
+    transform_point(3);
+
+    crop_borders = (pix_extremes + 1) / 2 * wnd_size.xyxy - vec4(-crop.x, -crop.y, crop.z, crop.w) * zoom_scale;
+
+    if (process_type == 2){
+        vec2 transform_displacement = (1 - (crop_borders.xy + crop_borders.zw) / wnd_size) ;
+        vec2 transform_scale = wnd_size / (crop_borders.zw - crop_borders.xy);
+        for (int i = 0; i < 4; i++) {
+            point_coords[i] = (point_coords[i] + transform_displacement) * transform_scale;
+        }
+    }
+
+    // todo: refactor this
+    translucency = 1 - smoothstep(.5, .7, transparency);
+    f_show_amount = smoothstep(0, .7, show_amount);
+    min_edge = 2.5 * (smoothstep(0, 1, show_amount)) + show_amount;
+    max_edge = 2 * (smoothstep(.7, 1, show_amount)) + show_amount;
+    tran_blur = smoothstep(-.5, 0, -show_amount) + (smoothstep(0, .5, transparency));
+}
+
+
+#elif defined PICTURE_GEOMETRY
+
+layout (points) in;
+layout (triangle_strip, max_vertices = 4) out;
+
+
+in global_data{
+vec2 point_coords[4];
+vec2 uv_coords[4];
+vec4 crop_borders;
+
+float translucency;
+float f_show_amount;
+float min_edge;
+float max_edge;
+float tran_blur;
+} in_data[];
 
 out vec2 uv0;
 out float translucency;
@@ -71,72 +108,42 @@ out float f_show_amount;
 out float min_edge;
 out float max_edge;
 out float tran_blur;
-out float border_color;
-out int work_axis;
 out vec4 crop_borders;
-out vec2 real_pic_size;
 
 
-void compute_positions(){
-    vec2 pix_size = textureSize(texture0, 0);
-    vec2 whole_resize = vec2((resize_xy + 1.) * (resize_x + 1.), (resize_xy + 1.) * (resize_y + 1.));
-    vec2 crop_amount = vec2(crop.x + crop.y, crop.z + crop.w);
-    float active_angle = is_neq(process_type, 2) * angle;
-    mat2 rotate_mat = mat2(cos(active_angle), - sin(active_angle), sin(active_angle), cos(active_angle));
-    vec2 displacement_m = displacement * is_neq(render_mode, 2);
-    vec2 crop_displacement = crop.xz - crop.yw;
 
-    real_pic_size = 2 * zoom_scale * (pix_size * whole_resize - crop_amount);
-
-    vec2 pic_resized = pix_size * whole_resize;
-
-    vec2 position_part1 = in_position * (pic_resized - crop_amount * is_neq(process_type, 0)) * rotate_mat;
-    vec2 position_part2 = position_part1 + displacement_m + crop_displacement * is_neq(process_type, 0);
-    gl_Position = vec4(position_part2 * zoom_scale / wnd_size, 0, 1);
-
-    vec2 cropped_pix_size = pic_resized - crop_amount;
-    vec2 crop_average_displacement = displacement_m + crop_displacement;
-    vec2 crop_border_bl = (crop_average_displacement - cropped_pix_size) * zoom_scale + wnd_size;
-    vec2 crop_border_tr = (crop_average_displacement + cropped_pix_size) * zoom_scale + wnd_size;
-    crop_borders = vec4(crop_border_bl, crop_border_tr) / 2;
-
-    vec2 crop_scaler = mix(vec2(1), (pic_resized - crop_amount) * zoom_scale / wnd_size, is_eq(render_mode, 2));
-    gl_Position.xy -= crop_average_displacement * zoom_scale / wnd_size * is_eq(render_mode, 2);
-    gl_Position.xy /= crop_scaler;
-    crop_borders += 50000 * vec4(-1, -1, 1, 1) * is_neq(render_mode, 1);
+void emit_point(int point_id){
+    gl_Position = vec4(in_data[0].point_coords[point_id], 0.0, 1.0);
+    uv0 = in_data[0].uv_coords[point_id];
+    EmitVertex();
 }
 
 void main() {
-    compute_positions();
+    translucency = in_data[0].translucency;
+    f_show_amount =  in_data[0].f_show_amount;
+    min_edge = in_data[0].min_edge;
+    max_edge = in_data[0].max_edge;
+    tran_blur = in_data[0].tran_blur;
+    crop_borders = in_data[0].crop_borders;
 
-    uv0 = (in_position + 1) / 2;
-    translucency = 1 - smoothstep(.5, .7, transparency);
-    f_show_amount = smoothstep(0, .7, show_amount);
-    min_edge = 2.5 * (smoothstep(0, 1, show_amount)) + show_amount;
-    max_edge = 2 * (smoothstep(.7, 1, show_amount)) + show_amount;
-    tran_blur = smoothstep(-.5, 0, -show_amount) + (smoothstep(0, .5, transparency));
-
-    border_color = 1 - sign(abs(gl_VertexID / 2 - active_border_id + 1));
-    work_axis = 1 - int(gl_VertexID / 4);
-
-    if (one_by_one)
-    {
-        gl_Position = vec4(in_position, 1, 1);
-    }
+    emit_point(0);
+    emit_point(1);
+    emit_point(2);
+    emit_point(3);
+    EndPrimitive();
 }
 
-    #elif defined FRAGMENT_SHADER
+    #elif defined PICTURE_FRAGMENT
 
     #define sub_pixel_distance .45
     #define PI 3.1415926538
     #define inter_pixel_gap .001925// origin unknown, chosen experimentaly
+    #define  Pr  .299
+    #define  Pg  .587
+    #define  Pb  .114
 
 
-//layout(binding=10) uniform sampler2D texture_hd_r;
-//layout(binding=11) uniform sampler2D texture_hd_g;
-//layout(binding=12) uniform sampler2D texture_hd_b;
-//layout(binding=15) uniform sampler2D levels_borders;
-//layout(binding=6) uniform sampler2D texture_curve;
+
 layout(binding=5) uniform sampler2D texture0;
 layout(binding=7, r32ui) uniform uimage2D histogram_texture;
 
@@ -153,12 +160,15 @@ uniform vec4 lvl_i_max;
 uniform vec4 lvl_o_min;
 uniform vec4 lvl_o_max;
 uniform vec4 lvl_gamma;
+uniform vec4 saturation;
 uniform int render_mode;
+uniform int process_type;
 uniform vec2 wnd_size;
 uniform float transparency;
 uniform bool one_by_one;
 
 out vec4 fragColor;
+
 in vec2 uv0;
 in float translucency;
 in float f_show_amount;
@@ -177,11 +187,11 @@ vec4 pixel_color;
 
 
 float get_gray(vec4 pixel_color){
-    return pixel_color.r * .299 + pixel_color.g * .587 + pixel_color.b * .114;
+    return pixel_color.r * Pr + pixel_color.g * Pg + pixel_color.b * Pb;
 }
 
 double get_gray(dvec4 pixel_color){
-    return pixel_color.r * .299 + pixel_color.g * .587 + pixel_color.b * .114;
+    return pixel_color.r * Pr + pixel_color.g * Pg + pixel_color.b * Pb;
 }
 
 // unclamped average between smoothstep and smootherstep
@@ -192,9 +202,23 @@ dvec2 smootherstep_ease(dvec2 x) {
 double pixel_bands_mixed(vec4 four_pix, dvec2 in_pixel_coords)
 {
     dvec2 half_pixel;
-    half_pixel.x = mix(four_pix.x, four_pix.y, in_pixel_coords.x);
-    half_pixel.y = mix(four_pix.w, four_pix.z, in_pixel_coords.x);
+    half_pixel = mix(four_pix.xw, four_pix.yz, in_pixel_coords.x);
     return mix(half_pixel.y, half_pixel.x, in_pixel_coords.y);
+}
+
+vec4 changeSaturation(float R, float G, float B, float change) {
+
+    float P=sqrt(
+        R * R * Pr +
+        G * G * Pg +
+        B * B * Pb
+    ) ;
+
+    R = P + (R - P) * change;
+    G = P + (G - P) * change;
+    B = P + (B - P) * change;
+
+    return vec4(R, G, B, 1);
 }
 
 dvec4 pixel_color_mixed(sampler2D tex, vec2 uv, float pixel_size)
@@ -221,7 +245,7 @@ void main() {
     vec2 dy = dFdy(uv0) * actual_blur;
     pixel_color = textureGrad(texture0, uv0, dx, dy);
 
-    if ((zoom_scale > 1) && (transparency == 0) && (one_by_one == false))
+    if ((zoom_scale > 1) && (transparency == 0) && (process_type == 0))
     {
         pixel_color_hd = pixel_color_mixed(texture0, uv0, pixel_size);
         { pixel_color = mix(pixel_color, vec4(pixel_color_hd), smoothstep(1, 2, log10(zoom_scale))); }
@@ -249,6 +273,8 @@ void main() {
         pixel_color = pow(pixel_color, lvl_gamma.aaaa);
         pixel_color = pixel_color * (lvl_o_max.a - lvl_o_min.a) + lvl_o_min.a;
         pixel_color = clamp(pixel_color, 0, 1);
+
+        pixel_color = changeSaturation(pixel_color.r, pixel_color.g, pixel_color.b, saturation.x);
     }
 
     if (count_histograms)
@@ -263,7 +289,7 @@ void main() {
         imageAtomicAdd(histogram_texture, ivec2(color_coord.b, 3), 1u);
     }
 
-    if ((zoom_scale > 1) && (transparency == 0) && (true))
+    if ((zoom_scale > 1) && (transparency == 0) && (process_type == 0))
     {
         float past_layer_scale;
         float next_layer_scale;
@@ -284,7 +310,7 @@ void main() {
     }
 
     // Edges and transitions
-    float hide_borders_m = hide_borders * is_eq(0, render_mode);
+    float hide_borders_m = hide_borders * (process_type == 0 ? 1 : 0);
     to_edge = (1 - abs(2 * uv0 - 1)) * pix_size * zoom_scale;
     to_edge = smoothstep(0, hide_borders_m + inter_blur * tran_blur * 5, to_edge);
     to_edge = pow(to_edge, vec2(.3));
@@ -295,23 +321,80 @@ void main() {
     float crop_alpha = .8;
     crop_alpha *= step(crop_borders.x, gl_FragCoord.x) * step(gl_FragCoord.x, crop_borders.z);
     crop_alpha *= step(crop_borders.y, gl_FragCoord.y) * step(gl_FragCoord.y, crop_borders.w);
-    crop_alpha += .2;
+    crop_alpha = (process_type == 1 ? crop_alpha + .2 : 1);
     fragColor = vec4(pixel_color.rgb, tran_alpha * translucency * to_edge_a * crop_alpha);
+}
+
+
+#elif defined CROP_GEOMETRY
+
+layout (points) in;
+layout (line_strip, max_vertices = 8) out;
+uniform int active_border_id;
+uniform vec2 wnd_size;
+
+in global_data{
+vec2 point_coords[4];
+vec2 uv_coords[4];
+vec4 crop_borders;
+
+float translucency;
+float f_show_amount;
+float min_edge;
+float max_edge;
+float tran_blur;
+} in_data[];
+
+out vec4 crop_borders;
+out flat int work_axis;
+out float border_color;
+const float point_rel_coords_x[8] = {  0,   0, -.1, 1.1,   1,   1, -.1, 1.1};
+const float point_rel_coords_y[8] = {-.1, 1.1,   0,   0, -.1, 1.1,   1,   1};
+//const float point_rel_coords_x[8] = {-.1, 1.1, -.1, 1.1, 0, 0, 1, 1};
+//const float point_rel_coords_y[8] = {0, 0, 1, 1, -.1, 1.1, -.1, 1.1,};
+vec4 borders_rel;
+
+void emit_point(int point_id){
+    float x, y;
+    x = mix(borders_rel.x, borders_rel.z, point_rel_coords_x[point_id]);
+    y = mix(borders_rel.y, borders_rel.w, point_rel_coords_y[point_id]);
+    gl_Position = vec4(x, y, 0.0, 1.0);
+    EmitVertex();
+}
+
+
+void emit_line(int line_id){
+    border_color = (((line_id + 1) == active_border_id) ?  1 : 0 );
+    work_axis = line_id >> 1;
+    emit_point(line_id * 2);
+    emit_point(line_id * 2 + 1);
+    EndPrimitive();
+}
+
+void main() {
+    crop_borders = in_data[0].crop_borders;
+    borders_rel = crop_borders / wnd_size.xyxy * 2 - 1;
+
+    emit_line(0);
+    emit_line(1);
+    emit_line(2);
+    emit_line(3);
 }
 
     #elif defined CROP_FRAGMENT
 
-uniform vec2 displacement;
 uniform vec2 wnd_size;
-uniform float zoom_scale;
-out vec4 fragColor;
 in float border_color;
 in flat int work_axis;
-in vec2 real_pic_size;
+in vec4 crop_borders;
+
+out vec4 fragColor;
 
 void main() {
-    float alpha = 2 * abs(((displacement * zoom_scale + wnd_size - 2 * gl_FragCoord.xy) / real_pic_size)[work_axis]);
-    fragColor = vec4(vec3(.8) + border_color * vec3(.2, -.3, -.3), alpha);
+    vec2 invert_size = (crop_borders.zw - crop_borders.xy) / 15;
+    vec2 alpha = invert_size * (1 / (gl_FragCoord.xy - crop_borders.xy) + 1 / (gl_FragCoord.xy - crop_borders.zw));
+
+    fragColor = vec4(vec3(.8) + border_color * vec3(.2, -.3, -.3), .3 + abs(alpha[work_axis]));
 }
 
 #elif defined ROUND_VERTEX
