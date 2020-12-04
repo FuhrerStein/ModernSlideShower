@@ -206,19 +206,36 @@ double pixel_bands_mixed(vec4 four_pix, dvec2 in_pixel_coords)
     return mix(half_pixel.y, half_pixel.x, in_pixel_coords.y);
 }
 
-vec4 changeSaturation(float R, float G, float B, float change) {
+vec4 change_saturation(vec4 pix, float change) {
 
-    float P=sqrt(
-        R * R * Pr +
-        G * G * Pg +
-        B * B * Pb
-    ) ;
+    pix.a = sqrt(
+        pix.r * pix.r * Pr +
+        pix.g * pix.g * Pg +
+        pix.b * pix.b * Pb ) ;
 
-    R = P + (R - P) * change;
-    G = P + (G - P) * change;
-    B = P + (B - P) * change;
+    pix = mix(pix.aaaa, pix, change);
 
-    return vec4(R, G, B, 1);
+    return pix;
+}
+
+vec4 change_saturation_soft2(vec4 pix, float change) {
+
+    pix.a = sqrt(
+        pix.r * pix.r * Pr +
+        pix.g * pix.g * Pg +
+        pix.b * pix.b * Pb ) ;
+
+    float new_sat, vibrance, change_1, desaturator;
+    change_1 = change - 1;
+    vec3 pix_diff;
+    pix_diff = pix.rgb - pix.aaa;
+    pix_diff *= pix_diff;
+    vibrance = pix_diff.r + pix_diff.g + pix_diff.b;
+    desaturator = 1 + vibrance * change_1 * ((change_1 > 0) ? 50 : 0);
+
+    new_sat = 1 + change_1 / desaturator;
+    pix = mix(pix.aaaa, pix, new_sat);
+    return pix;
 }
 
 dvec4 pixel_color_mixed(sampler2D tex, vec2 uv, float pixel_size)
@@ -274,7 +291,18 @@ void main() {
         pixel_color = pixel_color * (lvl_o_max.a - lvl_o_min.a) + lvl_o_min.a;
         pixel_color = clamp(pixel_color, 0, 1);
 
-        pixel_color = changeSaturation(pixel_color.r, pixel_color.g, pixel_color.b, saturation.x);
+
+//        if ((gl_FragCoord.x / wnd_size.x) < .3){
+////            pixel_color = changeSaturation(pixel_color.r, pixel_color.g, pixel_color.b, saturation.x);
+//            pixel_color = change_saturation(pixel_color, saturation.x);
+//        }
+//        else{
+//            pixel_color = change_saturation_soft2(pixel_color, saturation.x);
+//        }
+
+//        pixel_color = change_saturation(pixel_color, saturation.x);
+        pixel_color = change_saturation_soft2(pixel_color, saturation.x);
+
     }
 
     if (count_histograms)

@@ -286,11 +286,14 @@ dvec2 vec_sqr_simple_5(dvec2 a){
 
 #define prezoom 4e-3
 
-layout(binding=8, r32ui) uniform uimage2D histogram_texture;
+//layout(binding=8, r32ui) uniform uimage2D histogram_texture;
+layout(std430, binding = 4) buffer layoutName
+{
+    uint data_SSBO[2048];
+};
 
 uniform float invert_zoom;
 uniform float complexity;
-//uniform dvec2 wnd_size;
 uniform dvec2 half_wnd_size;
 
 uniform dvec4 mandel_x;
@@ -314,10 +317,6 @@ void main() {
     dvec2 va_sqr, vb_sqr;
     // todo: replace va and vb with single vector
 
-//    dvec2 coord_x_var = two_prod(gl_FragCoord.x - wnd_size.x / 2, prezoom / zoom);
-//    dvec2 coord_y_var = two_prod(gl_FragCoord.y - wnd_size.y / 2, prezoom / zoom);
-//    dvec2 coord_x_var = two_prod(gl_FragCoord.x - wnd_size.x / 2, invert_zoom);
-//    dvec2 coord_y_var = two_prod(gl_FragCoord.y - wnd_size.y / 2, invert_zoom);
     dvec2 coord_x_var = two_prod(gl_FragCoord.x - half_wnd_size.x, invert_zoom);
     dvec2 coord_y_var = two_prod(gl_FragCoord.y - half_wnd_size.y, invert_zoom);
 
@@ -334,7 +333,7 @@ void main() {
     y = coord_y_var.x;
     #endif
 
-    while (n++ + final_step * 1.5 < complexity)
+    while (n++ + final_step * 0.5 < complexity)
     {
 
         #if (definition < 2)
@@ -372,8 +371,10 @@ void main() {
     }
 
     ivec2 n_was_bigger = ivec2(0, step(n, complexity - 1));
+//    n_was_bigger = ivec2(0, step(n + final_step * 0.5, complexity));
     ivec2 cluster_coord = ivec2((gl_FragCoord.xy / half_wnd_size / 2 + n_was_bigger) * 32);
-    imageAtomicAdd(histogram_texture, cluster_coord, 1u);
+    uint cluster_coord_flat = int(cluster_coord.y * 32 + cluster_coord.x);
+    atomicAdd(data_SSBO[cluster_coord_flat], 1u);
 
     float comp_float = float(complexity);
     a1 = smoothstep(0, 40, pre_final_step * (20 - pre_final_step));
@@ -390,7 +391,7 @@ void main() {
     a2 = (pre_final_step - 10) * (comp_float - n - pre_final_step);
     a2 = smoothstep(-50, (comp_float - n) * (comp_float - n - 10), a2) * 2;
     a3 = smoothstep(0, (complexity - n), pre_final_step);
-    gl_FragColor  = vec4(-a3 * 0.1 + a1 * .1, a2 * .7 - a3*.2, a2 * 1, 1);
+    gl_FragColor  = vec4(-a3 * 0.2 + a1 * .1, a2 * (.55 - .20 * a3*.25), a2 * .99, 1);
     //    gl_FragColor  = vec4(a3 * 0.1 + a1 * .1, a2 * .7 + a3 *.2, a3 * 1, 1);
 
 //    a2 = smoothstep(0, float(final_step), complexity - n);
