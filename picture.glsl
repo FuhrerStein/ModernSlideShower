@@ -206,7 +206,7 @@ double pixel_bands_mixed(vec4 four_pix, dvec2 in_pixel_coords)
     return mix(half_pixel.y, half_pixel.x, in_pixel_coords.y);
 }
 
-vec4 change_saturation(vec4 pix, float change) {
+vec4 change_saturation_hard(vec4 pix, float change) {
 
     pix.a = sqrt(
         pix.r * pix.r * Pr +
@@ -218,7 +218,7 @@ vec4 change_saturation(vec4 pix, float change) {
     return pix;
 }
 
-vec4 change_saturation_soft2(vec4 pix, float change) {
+vec4 change_saturation_soft(vec4 pix, float change) {
 
     pix.a = sqrt(
         pix.r * pix.r * Pr +
@@ -279,6 +279,9 @@ void main() {
 
     if (useCurves)
     {
+        pixel_color = change_saturation_hard(pixel_color, saturation.x);
+        pixel_color = change_saturation_soft(pixel_color, saturation.y);
+
         pixel_color = (pixel_color - lvl_i_min) / (lvl_i_max - lvl_i_min);
         pixel_color = clamp(pixel_color, 0, 1);
         pixel_color = pow(pixel_color, lvl_gamma);
@@ -300,8 +303,8 @@ void main() {
 //            pixel_color = change_saturation_soft2(pixel_color, saturation.x);
 //        }
 
-//        pixel_color = change_saturation(pixel_color, saturation.x);
-        pixel_color = change_saturation_soft2(pixel_color, saturation.x);
+        pixel_color = change_saturation_hard(pixel_color, saturation.z);
+        pixel_color = change_saturation_soft(pixel_color, saturation.w);
 
     }
 
@@ -378,8 +381,6 @@ out flat int work_axis;
 out float border_color;
 const float point_rel_coords_x[8] = {  0,   0, -.1, 1.1,   1,   1, -.1, 1.1};
 const float point_rel_coords_y[8] = {-.1, 1.1,   0,   0, -.1, 1.1,   1,   1};
-//const float point_rel_coords_x[8] = {-.1, 1.1, -.1, 1.1, 0, 0, 1, 1};
-//const float point_rel_coords_y[8] = {0, 0, 1, 1, -.1, 1.1, -.1, 1.1,};
 vec4 borders_rel;
 
 void emit_point(int point_id){

@@ -94,11 +94,11 @@ LEVEL_BORDER_NAMES = [
 #    todo: avoid swapping textures every frame
 #    todo: in case of deep unzoom, show thumbnails
 #    todo: "repeat last levels" single-key operation
-#    todo: vibrance (soft saturation) correction along with levels
-#    todo: pre-levels saturation
 #    todo: compare mode (left-right)
 #    todo: disable animation if image switching is done very fast with keyboard
 
+#    todone: vibrance (soft saturation) correction along with levels
+#    todone: pre-levels saturation
 #    todone: ensure transition animation starts after image is fully loaded
 #    todone: smooth mandelbrot auto mode
 #    todone: in mandel auto travel add a bit of randomness
@@ -1407,11 +1407,13 @@ class ModernSlideShower(mglw.WindowConfig):
                                                          self.config_formats[self.setting_active][1])
         elif self.levels_open:
             edit_parameter = self.levels_edit_parameter - 1
-            if edit_parameter > 2:
+            if edit_parameter > 2 and self.levels_edit_band < 4:
                 amount = - amount
+            # if self.levels_edit_group == 5:
+            #     self.levels_edit_parameter
             if self.levels_edit_band == 4:
-                self.levels_borders[5][0] = restrict(
-                    self.levels_borders[5][0] * (1 - amount), 0.01, 10)
+                self.levels_borders[5][edit_parameter] = restrict(
+                    self.levels_borders[5][edit_parameter] * (1 - amount), 0.01, 10)
                 self.update_levels(5)
             elif edit_parameter == 2:
                 self.levels_borders[edit_parameter][self.levels_edit_band] = restrict(
@@ -1500,7 +1502,9 @@ class ModernSlideShower(mglw.WindowConfig):
             return
 
         if self.levels_open and self.levels_enabled:
-            if self.pressed_mouse < 4:
+            if self.levels_edit_band == 4:
+                self.levels_edit_parameter = (self.levels_edit_group * 2 + self.pressed_mouse) % 5
+            elif self.pressed_mouse < 4:
                 self.levels_edit_parameter = (self.levels_edit_group * 3 + self.pressed_mouse) % 6
         elif self.transform_mode == 1:
             if self.pressed_mouse == 1:
@@ -1942,7 +1946,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
         def add_cells_with_text(texts, list_of_selected):
             for n, text in enumerate(texts):
-                letters_blue = .5 if int(n / 2) in list_of_selected else 1
+                letters_blue = .5 if n in list_of_selected else 1
                 imgui.push_style_color(imgui.STYLE_ALPHA, 1, 1, letters_blue)
                 imgui.text(text)
                 imgui.pop_style_color()
@@ -1977,46 +1981,46 @@ class ModernSlideShower(mglw.WindowConfig):
         style.alpha = .2 + .6 * self.levels_enabled
 
         imgui.columns(3)
-        add_cells_with_text(["", "Input", "   Output"], [self.levels_edit_group])
+        add_cells_with_text(["", "Input", "   Output"], [self.levels_edit_group + 1])
 
         imgui.columns(6)
-        add_cells_with_text(["", " min", " max", "gamma", " min", " max"], [self.levels_edit_group * 2,
-                                                                            self.levels_edit_group * 2 + 1])
+        selected = range(self.levels_edit_group * 3 + 1, self.levels_edit_group * 3 + 4)
+        add_cells_with_text(["", " min", " max", "gamma", " min", " max"], selected)
 
-        def add_grid_elements(row_name, row_number):
-            active_columns = [self.levels_edit_group * 3, self.levels_edit_group * 3 + 1,
-                              self.levels_edit_group * 3 + 2]
-            letters_blue = 1
-            if self.levels_edit_band == row_number:
-                letters_blue = .5
-            imgui.push_style_color(imgui.STYLE_ALPHA, 1, 1, letters_blue)
+        def add_one_slider(column, row_number, wide, column_is_active, band_active, sell_active):
+            if sell_active and band_active:
+                bg_color = (.7, .2, .2)
+            elif column_is_active and band_active:
+                bg_color = (.2, .2, .6)
+            else:
+                bg_color = (.2, .2, .2)
+            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, bg_color[0], bg_color[1], bg_color[2])
+            imgui.slider_float("", self.levels_borders[column][row_number], 0, [1, 10][wide], '%.2f', [1, 3][wide])
+            imgui.pop_style_color()
+            imgui.next_column()
+
+        def add_grid_elements(row_name, row_number, active_columns):
             imgui.text(row_name)
             imgui.next_column()
             for column in range(5):
-                if column == self.levels_edit_parameter - 1 and self.levels_edit_band == row_number:
-                    bg_color = (.7, .2, .2)
-                elif column in active_columns and self.levels_edit_band == row_number:
-                    bg_color = (.2, .2, .6)
-                else:
-                    bg_color = (.2, .2, .2)
-                imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, bg_color[0], bg_color[1], bg_color[2])
-                imgui.slider_float("", self.levels_borders[column][row_number], 0, 1, '%.2f', [1, .10][column == 4])
-                imgui.pop_style_color()
-                imgui.next_column()
-            imgui.pop_style_color()
+                add_one_slider(column, row_number, column == 2, column in active_columns,
+                               self.levels_edit_band == row_number, column == self.levels_edit_parameter - 1)
 
-        add_grid_elements("Red", 0)
-        add_grid_elements("Green", 1)
-        add_grid_elements("Blue", 2)
-        add_grid_elements("RGB", 3)
+        active_columns = range(self.levels_edit_group * 3, self.levels_edit_group * 3 + 3)
+        add_grid_elements("Red", 0, active_columns)
+        add_grid_elements("Green", 1, active_columns)
+        add_grid_elements("Blue", 2, active_columns)
+        add_grid_elements("RGB", 3, active_columns)
 
-        imgui.columns(1)
-        letters_blue = 1
-        if self.levels_edit_band == 5:
-            letters_blue = .5
-        imgui.push_style_color(imgui.STYLE_ALPHA, 1, 1, letters_blue)
-        imgui.slider_float("Saturation", self.levels_borders[5][0], 0, 10, '%.2f', .50)
-        imgui.pop_style_color()
+        imgui.columns(2)
+        add_cells_with_text(["Pre-levels Saturation", "Post-levels Saturation"], [self.levels_edit_group])
+        imgui.columns(4)
+        selected = self.levels_edit_group * 2
+        add_cells_with_text(["Hard", "Soft", "Hard", "Soft"], [selected, selected + 1])
+
+        for column in range(4):
+            add_one_slider(5, column, True, column // 2 == self.levels_edit_group,
+                           self.levels_edit_band == 4, column == self.levels_edit_parameter - 1)
 
         imgui.set_window_font_scale(1)
         imgui.end()
