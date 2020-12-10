@@ -7,6 +7,8 @@ import moderngl_window.context.base
 import moderngl_window.meta
 import moderngl_window.opengl.vao
 import moderngl_window.timers.clock
+import io
+import rawpy
 import mpmath
 from moderngl_window.opengl import program
 from moderngl_window.integrations.imgui import ModernglWindowRenderer
@@ -48,6 +50,8 @@ JPEGTRAN_EXE_FILE = "jpegtran.exe"
 JPEGTRAN_OPTIONS = ' -optimize -rotate {0} -trim -copy all -outfile "{1}" "{1}"'
 
 IMAGE_FILE_TYPES = ('jpg', 'png', 'jpeg', 'gif', 'tif', 'tiff')
+RAW_FILE_TYPES = ('nef', 'dng')
+ALL_FILE_TYPES = IMAGE_FILE_TYPES + RAW_FILE_TYPES
 EMPTY_IMAGE_LIST = "Empty.jpg"
 SAVE_FOLDER = ".\\SaveFolder\\"
 Point = collections.namedtuple('Point', ['x', 'y'])
@@ -304,7 +308,7 @@ class ModernSlideShower(mglw.WindowConfig):
         TRANSITION_SPEED: "Speed of transition between images",
         INTER_BLUR: "Blur during transition",
         STARTING_ZOOM_FACTOR: "Zoom of newly shown image",
-        PIXEL_SIZE: "Pixel size in case of extreme zoom",
+        PIXEL_SIZE: "Pixel shape in case of extreme zoom",
     }
 
     config_formats = {
@@ -399,7 +403,7 @@ class ModernSlideShower(mglw.WindowConfig):
     [F7] : move to first image in random directory
     [F8] : move to random image in random directory
     
-    [P] : show settings window
+    [S] : show settings window
     [A] : start slideshow (automatic image flipping)
     [L] : show/hide levels edit interface
     [T] : enter image transform mode
@@ -567,7 +571,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 [self.scan_directory(directory) for directory in dir_arguments]
             if len(file_arguments):
                 if len(dir_arguments) == 0 and len(file_arguments) == 1:
-                    if file_arguments[0].lower().endswith(IMAGE_FILE_TYPES):
+                    if file_arguments[0].lower().endswith(ALL_FILE_TYPES):
                         self.scan_directory(os.path.dirname(file_arguments[0]), file_arguments[0])
                     else:
                         self.scan_file(file_arguments[0])
@@ -596,7 +600,7 @@ class ModernSlideShower(mglw.WindowConfig):
             file_count = 0
             first_file = self.image_count
             for f in files:
-                if f.lower().endswith(IMAGE_FILE_TYPES):
+                if f.lower().endswith(ALL_FILE_TYPES):
                     img_path = os.path.join(root, f)
                     self.image_count += 1
                     file_count += 1
@@ -613,7 +617,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.dir_count += 1
 
     def scan_file(self, filename):
-        if filename.lower().endswith(IMAGE_FILE_TYPES):
+        if filename.lower().endswith(ALL_FILE_TYPES):
             file_dir = os.path.dirname(filename)
             last_dir = ""
             if len(self.dir_list):
@@ -768,7 +772,15 @@ class ModernSlideShower(mglw.WindowConfig):
         else:
             self.mandelbrot_mode = False
             try:
-                with Image.open(image_path) as img_buffer:
+
+                if sum([image_path.lower().endswith(ex) for ex in RAW_FILE_TYPES]):
+                    f = open(image_path, 'rb', buffering=0)  # This is a workaround for opening cyrillic file names
+                    thumb = rawpy.imread(f).extract_thumb()
+                    img_to_read = io.BytesIO(thumb.data)
+                else:
+                    img_to_read = image_path
+
+                with Image.open(img_to_read) as img_buffer:
                     if img_buffer.mode == "RGB":
                         self.im_object = self.reorient_image(img_buffer)
                     else:
@@ -1234,7 +1246,8 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.setting_active:
             if abs(self.virtual_cursor_position[1]) > 150:
                 self.setting_active += 1 if self.virtual_cursor_position[1] > 0 else -1
-                self.setting_active = restrict(self.setting_active, 1, len(self.configs))
+                # self.setting_active = restrict(self.setting_active, 1, len(self.configs))
+                self.setting_active = (self.setting_active - 1) % len(self.configs) + 1
                 self.virtual_cursor_position *= 0
         elif self.levels_open:
             if abs(self.virtual_cursor_position[0]) > 200:
@@ -1720,7 +1733,7 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.save_current_texture(True)
                 elif key == self.wnd.keys.F9:
                     self.save_current_texture(False)
-                elif key == self.wnd.keys.P:
+                elif key == self.wnd.keys.S:
                     self.setting_active = 0 if self.setting_active else 1
                 elif key in [self.wnd.keys.MINUS, 65453]:
                     self.key_picture_movement[4] = True
