@@ -50,7 +50,7 @@ JPEGTRAN_EXE_FILE = "jpegtran.exe"
 JPEGTRAN_OPTIONS = ' -optimize -rotate {0} -trim -copy all -outfile "{1}" "{1}"'
 
 IMAGE_FILE_TYPES = ('jpg', 'png', 'jpeg', 'gif', 'tif', 'tiff')
-RAW_FILE_TYPES = ('nef', 'dng')
+RAW_FILE_TYPES = ('nef', 'dng', 'arw')
 ALL_FILE_TYPES = IMAGE_FILE_TYPES + RAW_FILE_TYPES
 EMPTY_IMAGE_LIST = "Empty.jpg"
 SAVE_FOLDER = ".\\SaveFolder\\"
