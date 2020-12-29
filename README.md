@@ -1,6 +1,7 @@
 # ModernSlideShower
 Image viewer with smooth image mothion and easy navigation
 
+[Intro video](https://www.youtube.com/watch?v=kGz4jEd-cZQ)
 
 ## Description
 ModernSlideShower is an image viewer aimed at ease of use and good visual quality.
