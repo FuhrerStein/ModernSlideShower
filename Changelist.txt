@@ -1,0 +1,102 @@
+-- Planned functionality and changes --
+
+todo: show compression and decompression progress when saving/loading lists
+todo: save settings to file
+todo: program icon
+todo: filelist position indicator
+todo: explain about jpegtran in case it was not found
+todo: interface to adjust curves
+todo: zooming slideshow mode
+todo: filtering image with glsl code
+todo: support for large images by splitting them into smaller subtextures
+todo: seam resizing
+todo: set settings change speeds in setting settings
+todo: add 3-4 user-editable parameters to mandelbrot_mode
+todo: add other julia sets in mandelbrot_mode
+todo: tutorial mode to teach user how to use program
+todo: avoid swapping textures every frame
+todo: in case of deep unzoom, show thumbnails
+todo: "repeat last levels" single-key operation
+todo: rewrite help for other modes: levels, transform, mandelbrot
+todo: transition settings for next image, next folder, and first image in list
+todo: caching for mandelbrot texels
+irregular smooth borders
+read-only mode
+
+
+
+-- Implemented functionality and changes --
+
+report how many times over all images were shown during program run
+show random unshown image
+compare mode (left-right)
+menu with common functions by left click
+shortening of permanent messages to single letter
+touchpad mode - swipe to switch and move files
+switch animation gets faster is case of fast image switching
+vibrance (soft saturation) correction along with levels
+pre-levels saturation
+ensure transition animation starts after image is fully loaded
+smooth mandelbrot auto mode
+in mandel auto travel add a bit of randomness
+mandel_travel must choose target coordinate instead of speed
+saturation correction along with levels
+smooth animation when apply crop
+when rotating, crop with widest possible borders
+choose even not visible border for cropping
+generate picture coordinates on the fly
+correlate transition speed with actual flipping rate
+intuitive centering during unzoom
+dialog to edit settings
+use 4-point sampling to generate fake texture on extreme zoom
+keyboard navigation on picture
+image resizing in full edit mode
+image rotation in full edit mode
+automatic travel in mandelbrot mode
+double-double presision calculation for mandelbrot_mode
+lossy image cropping in full edit mode
+make mandelbrot_mode eye candy
+basic live mandelbrot when no images found
+decompress list file
+compress list file
+generalize settings
+jump to random folder (not image)
+jump to random image in same folder
+simple blur during transition
+if jpegtan was not found, do not show message to save rotation
+sticking of enable/disable levels key
+swap levels adjustments: put gamma min and max, adjust gamma with l+r mouse
+do not apply borders when apply levels
+replace simple pop messages with full-fledged messages queue
+levels edit with left and right mouse
+show short image info
+navigate through levels interface with only mouse
+navigate through settings by mouse
+adjustable between-image transition
+do not regenerate empty image if it is already there
+nice empty image
+save 90°-rotation when saving edited image
+autoflip mode
+smooth image change
+random image jump from mouse
+self.pressed_mouse must support middle button with other buttons
+show friendly message in case no images are found
+start with random image if playlist had _r in its name
+pleasant image centering
+show message when changing folder
+simple slidelist compression to reduce file size.
+make image sharpest possible using right mipmap texture
+show message when ending list
+update histograms on the fly
+save edited image
+interface to adjust levels
+different color levels
+mouse action for left+right drag
+help message on F1 or H
+free image rotation
+rotate indicator
+copy/move indicator
+work with broken and gray jpegs
+keep image in visible area
+mouse flip indicator
+inertial movement and zooming

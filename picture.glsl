@@ -166,6 +166,7 @@ uniform int process_type;
 uniform vec2 wnd_size;
 uniform float transparency;
 uniform bool one_by_one;
+uniform float half_picture;
 
 out vec4 fragColor;
 
@@ -353,8 +354,60 @@ void main() {
     crop_alpha *= step(crop_borders.x, gl_FragCoord.x) * step(gl_FragCoord.x, crop_borders.z);
     crop_alpha *= step(crop_borders.y, gl_FragCoord.y) * step(gl_FragCoord.y, crop_borders.w);
     crop_alpha = (process_type == 1 ? crop_alpha + .2 : 1);
-    fragColor = vec4(pixel_color.rgb, tran_alpha * translucency * to_edge_a * crop_alpha);
+    float half_picture_alpha = 1;
+    half_picture_alpha *= step(gl_FragCoord.x, wnd_size.x * (1 - half_picture));
+    half_picture_alpha *= step(- wnd_size.x * half_picture, gl_FragCoord.x);
+
+//    * step(half_picture, gl_FragCoord.x);
+//    half_picture_alpha = step(gl_FragCoord.x, wnd_size.x + half_picture) * step(half_picture, gl_FragCoord.x);
+    fragColor = vec4(pixel_color.rgb, tran_alpha * translucency * to_edge_a * crop_alpha * half_picture_alpha);
 }
+
+
+#elif defined COMPARE_VETREX
+
+void main() {
+}
+
+
+#elif defined COMPARE_GEOMETRY
+
+layout (points) in;
+layout (line_strip, max_vertices = 2) out;
+uniform float line_position;
+//uniform vec2 wnd_size;
+
+void main() {
+//    borders_rel = crop_borders / wnd_size.xyxy * 2 - 1;
+    float x, y;
+
+    x = line_position * 2 - 1;
+    gl_Position = vec4(x, -1, 0.0, 1.0);
+    EmitVertex();
+
+    gl_Position = vec4(x, 1, 0.0, 1.0);
+    EmitVertex();
+
+    EndPrimitive();
+}
+
+    #elif defined COMPARE_FRAGMENT
+
+//uniform vec2 wnd_size;
+//in float border_color;
+//in flat int work_axis;
+//in vec4 crop_borders;
+
+out vec4 fragColor;
+
+void main() {
+//    vec2 invert_size = (crop_borders.zw - crop_borders.xy) / 15;
+//    vec2 alpha = invert_size * (1 / (gl_FragCoord.xy - crop_borders.xy) + 1 / (gl_FragCoord.xy - crop_borders.zw));
+//
+//    fragColor = vec4(vec3(.8) + border_color * vec3(.2, -.3, -.3), .3 + abs(alpha[work_axis]));
+    fragColor = vec4(1);
+}
+
 
 
 #elif defined CROP_GEOMETRY
