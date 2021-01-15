@@ -18,6 +18,8 @@ Key features:
     * Random image in current folder
     * First image in random folder
     * Random image in random folder
+    * Random image among those were never shown during this program run
+* **Gesture mode** Specifically for touchpad users to easily switch images and do file manupulation with simple swipes.
 * **Automatic image swithing (slideshow),** where you can change switching speed on the go and visual indicator till next switch.
 * **Image rotation on the screen.** Option to rotate by 90° angles, as well as by arbitrary angle.
 * **Lossless jpeg rotation.** Using free third-party utility [jpegtran](https://sourceforge.net/projects/libjpeg-turbo/files/2.0.5/)
