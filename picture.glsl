@@ -358,9 +358,12 @@ void main() {
     half_picture_alpha *= step(gl_FragCoord.x, wnd_size.x * (1 - half_picture));
     half_picture_alpha *= step(- wnd_size.x * half_picture, gl_FragCoord.x);
 
-//    * step(half_picture, gl_FragCoord.x);
-//    half_picture_alpha = step(gl_FragCoord.x, wnd_size.x + half_picture) * step(half_picture, gl_FragCoord.x);
-    fragColor = vec4(pixel_color.rgb, tran_alpha * translucency * to_edge_a * crop_alpha * half_picture_alpha);
+    float irregular_alpha = 0;
+    irregular_alpha += cos(uv0.x * 78 + uv0.y * 20) + cos(uv0.y * 78 + uv0.x * 20);
+    irregular_alpha += sin(uv0.x * 43 - uv0.y * 120) + cos(uv0.y * 43 - uv0.x * 120);
+
+    float final_alpha = pow(to_edge_a, 1 + irregular_alpha / 20 ) * crop_alpha * tran_alpha * translucency * half_picture_alpha;
+    fragColor = vec4(pixel_color.rgb, final_alpha);
 }
 
 

@@ -20,13 +20,14 @@ todo: "repeat last levels" single-key operation
 todo: rewrite help for other modes: levels, transform, mandelbrot
 todo: transition settings for next image, next folder, and first image in list
 todo: caching for mandelbrot texels
-irregular smooth borders
+
 read-only mode
 
 
 
 -- Implemented functionality and changes --
 
+irregular smooth borders
 report how many times over all images were shown during program run
 show random unshown image
 compare mode (left-right)
