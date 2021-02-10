@@ -21,17 +21,18 @@ import sys
 import random
 import collections
 import pyglet
+import json
 from mpmath import mp
 
 
 # from scipy.interpolate import BSpline
 
 # Settings names
-HIDE_BORDERS = 1
-TRANSITION_DURATION = 2
-INTER_BLUR = 3
-STARTING_ZOOM_FACTOR = 4
-PIXEL_SIZE = 5
+# HIDE_BORDERS = 1
+# TRANSITION_DURATION = 2
+# INTER_BLUR = 3
+# STARTING_ZOOM_FACTOR = 4
+# PIXEL_SIZE = 5
 
 LEVELS_BORDERS_IN_MIN = 0
 LEVELS_BORDERS_IN_MAX = 1
@@ -50,6 +51,7 @@ INTERFACE_MODE_MANDELBROT = 55
 SWITCH_MODE_CIRCLES = 30
 SWITCH_MODE_GESTURES = 31
 SWITCH_MODE_COMPARE = 32
+SWITCH_MODE_TINDER = 33
 
 BUTTON_STICKING_TIME = 0.3  # After passing this time button acts as temporary.
 IMAGE_UN_UNSEE_TIME = 0.2   # Time needed to consider image as been seen
@@ -87,6 +89,7 @@ class Actions:
     SWITCH_MODE_CIRCLES = 30
     SWITCH_MODE_GESTURES = 31
     SWITCH_MODE_COMPARE = 32
+    SWITCH_MODE_TINDER = 33
 
     LEVELS_APPLY = 40
     LEVELS_TOGGLE = 41
@@ -98,7 +101,6 @@ class Actions:
     LEVELS_SELECT_RED = 47
     LEVELS_SELECT_GREEN = 48
     LEVELS_SELECT_BLUE = 49
-
 
     INTERFACE_MODE_GENERAL = 50
     INTERFACE_MODE_MENU = 51
@@ -136,8 +138,30 @@ class Actions:
     MANDEL_TOGGLE_AUTO_TRAVEL_FAR = 84
     MANDEL_START_NEAR_TRAVEL_AND_ZONES = 85
 
+    ACTION_GENERAL_LEFT = 90
+    ACTION_GENERAL_RIGHT = 91
+    ACTION_GENERAL_UP = 92
+    ACTION_GENERAL_DOWN = 93
+    ACTION_GENERAL_SPACE = 94
+
     CLOSE_PROGRAM = 100
 
+
+class Configs:
+    HIDE_BORDERS = "Hide borders"
+    TRANSITION_DURATION = "Transition duration"
+    INTER_BLUR = "Transition Blur"
+    STARTING_ZOOM_FACTOR = "Initial zoom"
+    PIXEL_SIZE = "Pixel squareness"
+    i = [
+        HIDE_BORDERS,
+        TRANSITION_DURATION,
+        INTER_BLUR,
+        STARTING_ZOOM_FACTOR,
+        PIXEL_SIZE,
+        "Save",
+        "Close"
+    ]
 
 CENRAL_WND_FLAGS = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | \
                    imgui.WINDOW_NO_INPUTS | imgui.WINDOW_NO_COLLAPSE
@@ -168,30 +192,31 @@ ORIENTATION_DB = dict([
 
 # MAIN_MENU structure:
 # name, shortcut label, checkbox condition, action
-MAIN_MENU = [
-    ['Circle mode', '', lambda x: x.switch_mode == SWITCH_MODE_CIRCLES, None, Actions.SWITCH_MODE_CIRCLES],
-    ['Gesture mode', 'G', lambda x: x.switch_mode == SWITCH_MODE_GESTURES, None, Actions.SWITCH_MODE_GESTURES],
-    ['Compare mode', 'X', lambda x: x.switch_mode == SWITCH_MODE_COMPARE, None, Actions.SWITCH_MODE_COMPARE],
+MAIN_MENU = (
+    ('Circle mode', '', lambda x: x.switch_mode == SWITCH_MODE_CIRCLES, None, Actions.SWITCH_MODE_CIRCLES),
+    ('Gesture mode', 'G', lambda x: x.switch_mode == SWITCH_MODE_GESTURES, None, Actions.SWITCH_MODE_GESTURES),
+    ('Compare mode', 'X', lambda x: x.switch_mode == SWITCH_MODE_COMPARE, None, Actions.SWITCH_MODE_COMPARE),
+    ('Tinder mode', 'J', lambda x: x.switch_mode == SWITCH_MODE_TINDER, None, Actions.SWITCH_MODE_TINDER),
     "--",
-    ['Automatic switching (slideshow)', 'A', lambda x: x.autoflip_speed != 0, None, Actions.AUTO_FLIP_TOGGLE],
+    ('Automatic switching (slideshow)', 'A', lambda x: x.autoflip_speed != 0, None, Actions.AUTO_FLIP_TOGGLE),
     "--",
-    ['Move file out', 'M', None, None, Actions.FILE_MOVE],
-    ['Copy file', 'C', None, None, Actions.FILE_COPY],
+    ('Move file out', 'M', None, None, Actions.FILE_MOVE),
+    ('Copy file', 'C', None, None, Actions.FILE_COPY),
     "--",
-    ['Rotate image right', '>', None, None, Actions.PIC_ROTATE_RIGHT],
-    ['Rotate image left', '<', None, None, Actions.PIC_ROTATE_LEFT],
-    ['Save rotation losslessly', 'Enter', None, lambda x: x.lossless_save_possible(), Actions.APPLY_ROTATION_90],
+    ('Rotate image right', '>', None, None, Actions.PIC_ROTATE_RIGHT),
+    ('Rotate image left', '<', None, None, Actions.PIC_ROTATE_LEFT),
+    ('Save rotation losslessly', 'Enter', None, lambda x: x.lossless_save_possible(), Actions.APPLY_ROTATION_90),
     "--",
-    ['Show image information', 'I', lambda x: x.show_image_info != 0, None, Actions.TOGGLE_IMAGE_INFO],
+    ('Show image information', 'I', lambda x: x.show_image_info != 0, None, Actions.TOGGLE_IMAGE_INFO),
     "--",
-    ['Adjust levels', 'L', None, None, Actions.INTERFACE_MODE_LEVELS],
-    ['Transform image', 'T', None, None, Actions.INTERFACE_MODE_TRANSFORM],
-    ['Settings', 'S', None, None, Actions.INTERFACE_MODE_SETTINGS],
-    ['Mandelbrot set', 'U', None, None, Actions.INTERFACE_MODE_MANDELBROT],
+    ('Adjust levels', 'L', None, None, Actions.INTERFACE_MODE_LEVELS),
+    ('Transform image', 'T', None, None, Actions.INTERFACE_MODE_TRANSFORM),
+    ('Settings', 'S', None, None, Actions.INTERFACE_MODE_SETTINGS),
+    ('Mandelbrot set', 'U', None, None, Actions.INTERFACE_MODE_MANDELBROT),
     "--",
-    ['Keyboard shortcuts', 'F1, H', lambda x: x.central_message_showing, None, Actions.CENTRAL_MESSAGE_TOGGLE],
-    ['Quit', 'Esc', None, None, Actions.CLOSE_PROGRAM],
-]
+    ('Keyboard shortcuts', 'F1, H', lambda x: x.central_message_showing, None, Actions.CENTRAL_MESSAGE_TOGGLE),
+    ('Quit', 'Esc', None, None, Actions.CLOSE_PROGRAM),
+)
 
 # KEYBOARD_SHORTCUTS structure (dict):
 # (action, interface_mode, ctrl, shift, alt, key): action_code
@@ -209,6 +234,7 @@ KEYBOARD_SHORTCUTS = {
 
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.G): Actions.SWITCH_MODE_GESTURES,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.X): Actions.SWITCH_MODE_COMPARE,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.J): Actions.SWITCH_MODE_TINDER,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.A): Actions.AUTO_FLIP_TOGGLE,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.I): Actions.TOGGLE_IMAGE_INFO,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.C): Actions.FILE_COPY,
@@ -224,11 +250,11 @@ KEYBOARD_SHORTCUTS = {
     (prs, INTERFACE_MODE_GENERAL, True, False, False, KEY.R): Actions.REVERT_IMAGE,
 
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.ENTER): Actions.APPLY_ROTATION_90,
-    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.SPACE): Actions.IMAGE_NEXT,
-    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.RIGHT): Actions.IMAGE_NEXT,
-    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.LEFT): Actions.IMAGE_PREVIOUS,
-    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.UP): Actions.IMAGE_RANDOM_UNSEEN_FILE,
-    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.DOWN): Actions.IMAGE_FOLDER_FIRST,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.SPACE): Actions.ACTION_GENERAL_SPACE,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.RIGHT): Actions.ACTION_GENERAL_RIGHT,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.LEFT): Actions.ACTION_GENERAL_LEFT,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.UP): Actions.ACTION_GENERAL_UP,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.DOWN): Actions.ACTION_GENERAL_DOWN,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.PAGEUP): Actions.IMAGE_FOLDER_PREVIOUS,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.PAGEDOWN): Actions.IMAGE_FOLDER_NEXT,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.F5): Actions.IMAGE_RANDOM_FILE,
@@ -251,6 +277,8 @@ KEYBOARD_SHORTCUTS = {
     (rls, INTERFACE_MODE_GENERAL, False, False, False, KEY.SPACE): Actions.KEYBOARD_FLIPPING_OFF,
     (rls, INTERFACE_MODE_GENERAL, False, False, False, KEY.RIGHT): Actions.KEYBOARD_FLIPPING_OFF,
     (rls, INTERFACE_MODE_GENERAL, False, False, False, KEY.LEFT): Actions.KEYBOARD_FLIPPING_OFF,
+    (rls, INTERFACE_MODE_GENERAL, False, False, False, KEY.UP): Actions.KEYBOARD_FLIPPING_OFF,
+    (rls, INTERFACE_MODE_GENERAL, False, False, False, KEY.DOWN): Actions.KEYBOARD_FLIPPING_OFF,
 
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.NUM_ADD): Actions.KEYBOARD_MOVEMENT_ZOOM_IN_ON,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.EQUAL): Actions.KEYBOARD_MOVEMENT_ZOOM_IN_ON,
@@ -374,6 +402,8 @@ POP_MESSAGE_TEXT = [
     "Mandelbrot mode",  # 19
     "Compare mode",  # 20
     "All images were shown {many_times}",  # 21
+    "Tinder mode",  # 22
+    "Settings saved",  # 23
 ]
 
 CENTRAL_MESSAGE = ["",
@@ -506,6 +536,9 @@ class ModernSlideShower(mglw.WindowConfig):
     file_list = []
     dir_to_file = []
     file_to_dir = []
+    image_categories = []
+    tinder_stats = np.zeros(3, dtype=np.int)
+    tinder_last_choice = 0
 
     unseen_images = set()
     current_image_is_unseen = True
@@ -522,6 +555,7 @@ class ModernSlideShower(mglw.WindowConfig):
     pic_pos_current = mp.mpc()
     pic_pos_future = mp.mpc()
     pic_move_speed = mp.mpc()
+    pic_pos_fading = mp.mpc()
 
     pic_zoom = .5
     pic_zoom_future = .2
@@ -586,27 +620,27 @@ class ModernSlideShower(mglw.WindowConfig):
     # mandel_use_beta = False
 
     configs = {
-        HIDE_BORDERS: 100,
-        TRANSITION_DURATION: .75,
-        INTER_BLUR: 30.,
-        STARTING_ZOOM_FACTOR: .98,
-        PIXEL_SIZE: 0
+        Configs.HIDE_BORDERS: 100,
+        Configs.TRANSITION_DURATION: .75,
+        Configs.INTER_BLUR: 30.,
+        Configs.STARTING_ZOOM_FACTOR: .98,
+        Configs.PIXEL_SIZE: 0
     }
 
     config_descriptions = {
-        HIDE_BORDERS: "Hide image borders",
-        TRANSITION_DURATION: "Duration of transition between images",
-        INTER_BLUR: "Blur during transition",
-        STARTING_ZOOM_FACTOR: "Zoom of newly shown image",
-        PIXEL_SIZE: "Pixel shape in case of extreme zoom",
+        Configs.HIDE_BORDERS: "Hide image borders",
+        Configs.TRANSITION_DURATION: "Duration of transition between images",
+        Configs.INTER_BLUR: "Blur during transition",
+        Configs.STARTING_ZOOM_FACTOR: "Zoom of newly shown image",
+        Configs.PIXEL_SIZE: "Pixel shape in case of extreme zoom",
     }
 
     config_formats = {
-        HIDE_BORDERS: (0, 1000, '%.1f', 2),
-        TRANSITION_DURATION: (0.01, 10, '%.3f', 2),
-        INTER_BLUR: (0, 1000, '%.1f', 4),
-        STARTING_ZOOM_FACTOR: (0, 5, '%.3f', 4),
-        PIXEL_SIZE: (0, 100, '%.1f', 4),
+        Configs.HIDE_BORDERS: (0, 1000, '%.1f', 2),
+        Configs.TRANSITION_DURATION: (0.01, 10, '%.3f', 2),
+        Configs.INTER_BLUR: (0, 1000, '%.1f', 4),
+        Configs.STARTING_ZOOM_FACTOR: (0, 5, '%.3f', 4),
+        Configs.PIXEL_SIZE: (0, 100, '%.1f', 4),
     }
 
     last_key_press_time = 0
@@ -683,7 +717,8 @@ class ModernSlideShower(mglw.WindowConfig):
 
         def get_program_text(filename, program_text=""):
             if os.path.isfile(filename):
-                program_text = open(filename, 'r').read()
+                with open(filename, 'r') as fd:
+                    program_text = fd.read()
             return program_text
 
         picture_program_text = get_program_text('picture.glsl')
@@ -737,6 +772,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.empty_level_borders()
         self.empty_level_borders()
         self.find_jpegtran()
+        self.load_settings()
 
     def post_init(self):
         self.get_images()
@@ -751,6 +787,8 @@ class ModernSlideShower(mglw.WindowConfig):
             return
 
         # self.unseen_images = set(range(self.image_count))
+        self.image_categories = np.zeros(self.image_count, dtype=np.int)
+        self.update_tinder_stats()
         self.find_common_path()
         if self.start_with_random_image:
             self.random_image()
@@ -991,6 +1029,17 @@ class ModernSlideShower(mglw.WindowConfig):
         img_path = os.path.join(dir_name, file_name)
         return img_path
 
+    def save_current_settings(self):
+        with open("settings.json", 'w') as f:
+            json.dump(self.configs, f)
+        self.schedule_pop_message(23)
+
+    def load_settings(self):
+        if os.path.isfile("settings.json"):
+            with open("settings.json", 'r') as f:
+                # json.dump(self.configs, f)
+                self.configs = json.load(f)
+
     def reorient_image(self, im):
         image_orientation = 0
 
@@ -1026,6 +1075,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.pic_angle_future = -30
         self.pic_zoom = .1
         self.pic_zoom_future = .2
+        self.discrete_actions(Actions.SWITCH_MODE_CIRCLES)
+        self.unschedule_pop_message(21)
 
     def load_image(self):
         self.previous_image_duration = self.timer.time - self.last_image_load_time
@@ -1096,7 +1147,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
         if self.image_index == 0 and not self.interface_mode == INTERFACE_MODE_MANDELBROT:
             self.unschedule_pop_message(8)
-            self.schedule_pop_message(7, 5)
+            # self.schedule_pop_message(7, 5)
         elif current_folder != self.last_image_folder:
             # self.schedule_pop_message(8, 5, current_folder=self.dir_list[current_folder:current_folder + 1])
             self.schedule_pop_message(12, 5, dir_index=current_folder + 1, dir_count=self.dir_count)
@@ -1121,46 +1172,30 @@ class ModernSlideShower(mglw.WindowConfig):
                 break
         self.load_image()
 
-    def move_file_out(self, do_copy=False):
+    def file_copy_move_routine(self, do_copy=False):
+
         mouse_cumulative = self.mouse_move_cumulative
         split_line = self.split_line
         im_index_current = self.image_index
         im_index_previous = self.previous_image_index
         im_index = self.image_index
+
         if self.switch_mode == SWITCH_MODE_COMPARE:
             if abs(self.mouse_move_cumulative) < 50:
                 im_index = self.previous_image_index
-        full_name = self.get_file_path(im_index)
-        # short_name = os.path.basename(full_name)
-        parent_folder = os.path.dirname(full_name)
-        own_subfolder = parent_folder[len(self.common_path):]
-        prefix_subfolder = ["--", "++"][do_copy]
-        if not own_subfolder.startswith("\\"):
-            own_subfolder = "\\" + own_subfolder
-        new_folder = os.path.join(self.common_path, prefix_subfolder) + own_subfolder
-        file_operation = [shutil.move, shutil.copy][do_copy]
-        if not os.path.isdir(new_folder):
-            try:
-                os.makedirs(new_folder)
-            except Exception as e:
-                print("Could not create folder", e)
 
-        try:
-            file_operation(full_name, new_folder)
-        except Exception as e:
-            # todo good message here
-            print("Could not complete file " + ["move", "copy"][do_copy], e)
-            return
+        if self.switch_mode == SWITCH_MODE_TINDER:
+            for score, label in ((-1, "--"), (1, "++")):
+                indecies = np.asarray(self.image_categories == score).nonzero()
+                for i in indecies[0][::-1]:
+                    self.file_operation(i, label, do_copy)
+        else:
+            self.file_operation(im_index, ["-", "+"][do_copy], do_copy)
+
         if not self.switch_mode == SWITCH_MODE_COMPARE:
             self.mouse_move_cumulative = self.mouse_move_cumulative * .05
+
         if not do_copy:
-            dir_index = self.file_to_dir[im_index]
-            self.dir_to_file[dir_index][1] -= 1
-            for fix_dir in range(dir_index + 1, self.dir_count):
-                self.dir_to_file[fix_dir][0] -= 1
-            self.file_list.pop(im_index)
-            self.file_to_dir.pop(im_index)
-            self.image_count -= 1
             if self.image_count > 0:
                 if self.switch_mode == SWITCH_MODE_COMPARE:
                     self.new_image_index = im_index_previous % self.image_count
@@ -1170,15 +1205,57 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.mouse_move_cumulative = mouse_cumulative
                     self.split_line = split_line
                 else:
-                    self.new_image_index = im_index_current % self.image_count
+                    self.new_image_index = self.image_index % self.image_count
                     self.load_image()
                 # self.schedule_pop_message(0, duration=10, file_name=short_name, new_folder=new_folder)
                 self.schedule_pop_message(13, duration=10)
             else:
-                self.load_image(mandelbrot=True)
+                self.switch_interface_mode(Actions.INTERFACE_MODE_MANDELBROT)
         else:
             # self.schedule_pop_message(1, duration=10, file_name=short_name, new_folder=new_folder)
             self.schedule_pop_message(14, duration=10)
+
+    def file_operation(self, im_index, prefix_subfolder, do_copy=False):
+        full_name = self.get_file_path(im_index)
+        parent_folder = os.path.dirname(full_name)
+        own_subfolder = parent_folder[len(self.common_path):]
+        if not own_subfolder.startswith("\\"):
+            own_subfolder = "\\" + own_subfolder
+        new_folder = os.path.join(self.common_path, prefix_subfolder) + own_subfolder
+        if not os.path.isdir(new_folder):
+            try:
+                os.makedirs(new_folder)
+            except Exception as e:
+                print("Could not create folder", e)
+
+        file_operation = [shutil.move, shutil.copy][do_copy]
+        try:
+            file_operation(full_name, new_folder)
+            if not do_copy:
+                self.delete_image_from_dbs(im_index)
+        except Exception as e:
+            # todo good message here
+            print("Could not complete file " + ["move", "copy"][do_copy], e)
+            return
+
+    def delete_image_from_dbs(self, im_index):
+        dir_index = self.file_to_dir[im_index]
+        self.dir_to_file[dir_index][1] -= 1
+        for fix_dir in range(dir_index + 1, self.dir_count):
+            self.dir_to_file[fix_dir][0] -= 1
+
+        self.file_list.pop(im_index)
+        self.file_to_dir.pop(im_index)
+        self.unseen_images.discard(im_index)
+
+        self.image_categories = np.delete(self.image_categories, im_index)
+        self.update_tinder_stats()
+        new_unseen_set = {i if i < im_index else i-1 for i in self.unseen_images}
+        self.unseen_images = new_unseen_set
+        self.image_count -= 1
+        print(im_index, self.image_index)
+        if im_index < self.image_index:
+            self.image_index -= 1
 
     def lossless_save_possible(self):
         save_possible = self.pic_angle_future % 360 and self.jpegtran_exe and not (self.pic_angle_future % 90)
@@ -1265,7 +1342,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.transition_stage = 0
             return
 
-        transition_time = 1 / min(self.previous_image_duration * .7, self.configs[TRANSITION_DURATION])  # / 60
+        transition_time = 1 / min(self.previous_image_duration * .7, self.configs[Configs.TRANSITION_DURATION])  # / 60
         transition_step = (1.2 - self.transition_stage) * transition_time * frame_time  # * 60
         to_target_stage = abs(self.mouse_move_cumulative) / 100 - self.transition_stage
         if to_target_stage > 0:
@@ -1274,6 +1351,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.transition_stage > .99999:
             self.transition_stage = 1
             self.release_texture(self.current_texture_old)
+            self.tinder_last_choice = 0
 
     def compute_movement(self, chunk):
         chunk10 = restrict(chunk * 10, 0, .5)
@@ -1293,8 +1371,6 @@ class ModernSlideShower(mglw.WindowConfig):
     def check_image_vilible(self):
         correction_vector = mp.mpc()
         if self.interface_mode == INTERFACE_MODE_MANDELBROT:
-            # border = max(self.window_size[0], self.window_size[1]) * 1.5
-            # x_re = self.pic_pos_current.real - border / 3 - self.window_size[0] / 2
             border = 1000 * 1.4
             x_re = self.pic_pos_current.real - 800
             if abs(x_re) > border:
@@ -1326,13 +1402,11 @@ class ModernSlideShower(mglw.WindowConfig):
                 safe_pix_x, safe_pix_y = self.window_size[0] * right_edge * .1, self.window_size[1] * .1
                 if self.crop_borders_active & 1:
                     x1 = borders[self.crop_borders_active - 1]
-                    # x2 = borders[self.crop_borders_active + 1]
                     correction_vector += (safe_pix_x - x1) * (x1 < safe_pix_x)
                     correction_vector += (self.window_size[0] - safe_pix_x - x1) * (
                             x1 > self.window_size[0] - safe_pix_x)
                 else:
                     y1 = borders[self.crop_borders_active - 1]
-                    # y2 = borders[self.crop_borders_active + 2]
                     correction_vector += (safe_pix_y - y1) * (y1 < safe_pix_y) * 1j
                     correction_vector += (self.window_size[1] - safe_pix_y - y1) * (
                             y1 > self.window_size[1] - safe_pix_y) * 1j
@@ -1409,7 +1483,6 @@ class ModernSlideShower(mglw.WindowConfig):
         new_texture.use(5)
 
         self.update_position()
-        # self.transform_mode = 0
         self.switch_interface_mode(INTERFACE_MODE_GENERAL)
 
     def apply_levels(self):
@@ -1487,7 +1560,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.unschedule_pop_message(2)
             self.unschedule_pop_message(4)
             self.program_id = 1 - self.program_id
-            self.pic_zoom = self.pic_zoom_future * self.configs[STARTING_ZOOM_FACTOR]
+            self.pic_zoom = self.pic_zoom_future * self.configs[Configs.STARTING_ZOOM_FACTOR]
             self.pic_pos_current = mp.mpc(0)
             self.pic_pos_future = mp.mpc(0)
             self.pic_move_speed = mp.mpc(0)
@@ -1614,9 +1687,9 @@ class ModernSlideShower(mglw.WindowConfig):
                                                             self.levels_enabled
         self.gl_program_pic[self.program_id]['count_histograms'] = self.interface_mode == INTERFACE_MODE_LEVELS
         self.gl_program_pic[self.program_id]['show_amount'] = self.transition_stage
-        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[HIDE_BORDERS]
-        self.gl_program_pic[self.program_id]['inter_blur'] = self.configs[INTER_BLUR]
-        self.gl_program_pic[self.program_id]['pixel_size'] = self.configs[PIXEL_SIZE]
+        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[Configs.HIDE_BORDERS]
+        self.gl_program_pic[self.program_id]['inter_blur'] = self.configs[Configs.INTER_BLUR]
+        self.gl_program_pic[self.program_id]['pixel_size'] = self.configs[Configs.PIXEL_SIZE]
         self.gl_program_pic[self.program_id]['transition_center'] = self.transition_center
         self.gl_program_pic[self.program_id]['resize_xy'] = self.resize_xy - 1
         self.gl_program_pic[self.program_id]['resize_x'] = self.resize_x - 1
@@ -1631,16 +1704,21 @@ class ModernSlideShower(mglw.WindowConfig):
             self.gl_program_pic[1 - self.program_id]['transparency'] = self.transition_stage
             self.gl_program_pic[self.program_id]['half_picture'] = 0
 
-        show_speed = .05
+        if self.switch_mode == SWITCH_MODE_TINDER and self.transition_stage < 1:
+            fading_pos = (self.pic_pos_fading.real +
+                          smootherstep_ease(self.transition_stage) * self.wnd.width / 3 * self.tinder_last_choice,
+                          self.pic_pos_fading.imag)
+            self.gl_program_pic[1 - self.program_id]['displacement'] = fading_pos
+
         blur_target = 0
         blur_now = self.gl_program_pic[self.program_id]['transparency'].value
-        if self.setting_active == INTER_BLUR:
-            blur_target = .5
-        elif self.setting_active == 0:
-            show_speed = 1
-        elif blur_now < .08:
-            blur_now = 0
-        self.gl_program_pic[self.program_id]['transparency'] = blur_now * (1 - show_speed) + blur_target * show_speed
+        if self.interface_mode == Actions.INTERFACE_MODE_SETTINGS:
+            if Configs.i[self.setting_active] == Configs.INTER_BLUR:
+                blur_target = .5
+            self.gl_program_pic[self.program_id]['transparency'] = mix(blur_now, blur_target, 0.05)
+        else:
+            self.gl_program_pic[self.program_id]['transparency'] = 0
+
 
         self.gl_program_borders['displacement'] = displacement
         self.gl_program_borders['zoom_scale'] = self.pic_zoom
@@ -1682,18 +1760,19 @@ class ModernSlideShower(mglw.WindowConfig):
             new_mode = SWITCH_MODE_CIRCLES
         self.switch_mode = new_mode
         self.mouse_buffer *= 0
-        if new_mode == SWITCH_MODE_CIRCLES:
-            self.unschedule_pop_message(11)
-            self.unschedule_pop_message(20)
-        elif new_mode == SWITCH_MODE_GESTURES:
+
+        self.unschedule_pop_message(11)
+        self.unschedule_pop_message(20)
+        self.unschedule_pop_message(22)
+        if new_mode == SWITCH_MODE_GESTURES:
             self.schedule_pop_message(11, 8000000, True)
-            self.unschedule_pop_message(20)
         elif new_mode == SWITCH_MODE_COMPARE:
-            self.unschedule_pop_message(11)
             self.schedule_pop_message(20, 8000000, True)
             self.run_flip_once = 1
             self.flip_once()
             self.mouse_move_cumulative = 50
+        elif new_mode == SWITCH_MODE_TINDER:
+            self.schedule_pop_message(22, 8000000, True)
 
     def switch_interface_mode(self, new_mode, toggle=True):
         if toggle and self.interface_mode == new_mode:
@@ -1716,7 +1795,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def mouse_gesture_tracking(self, dx, dy, speed=1, dynamic=True):
         if self.gesture_mode_timeout > self.timer.time:
-            self.gesture_mode_timeout = self.timer.time + .1
+            self.rearm_gesture_timeout(.1)
             self.mouse_buffer[1] = 0
             return
         mouse_cumulative = self.mouse_move_cumulative
@@ -1728,7 +1807,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if abs(self.mouse_move_cumulative) > 100:
             self.run_flip_once = 1 if self.mouse_move_cumulative > 0 else -1
             self.mouse_buffer *= 0
-            self.gesture_mode_timeout = self.timer.time + .2
+            self.rearm_gesture_timeout()
         if self.switch_mode == SWITCH_MODE_COMPARE:
             if math.copysign(1, self.mouse_move_cumulative) != math.copysign(1, mouse_cumulative):
                 direction = int(math.copysign(1, self.mouse_move_cumulative))
@@ -1741,13 +1820,74 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
         if self.mouse_buffer[1] > 100:
-            self.move_file_out()
+            if self.autoflip_speed:
+                self.discrete_actions(Actions.IMAGE_RANDOM_UNSEEN_FILE)
+            else:
+                self.discrete_actions(Actions.FILE_MOVE)
             self.mouse_buffer *= 0
-            self.gesture_mode_timeout = self.timer.time + .2
+            self.rearm_gesture_timeout()
         if self.mouse_buffer[1] < - 100:
-            self.move_file_out(do_copy=True)
+            if self.autoflip_speed:
+                self.discrete_actions(Actions.IMAGE_FOLDER_FIRST)
+            else:
+                self.discrete_actions(Actions.FILE_COPY)
             self.mouse_buffer *= 0
-            self.gesture_mode_timeout = self.timer.time + .2
+            self.rearm_gesture_timeout()
+
+    def rearm_gesture_timeout(self, timeout=.2):
+        self.gesture_mode_timeout = self.timer.time + timeout
+
+    def mouse_tin_tracking(self, dx, dy, speed=1, dynamic=True):
+        if self.gesture_mode_timeout > self.timer.time:
+            self.rearm_gesture_timeout(.1)
+            self.mouse_buffer[1] = 0
+            return
+        # mouse_cumulative = self.mouse_move_cumulative
+        dy_antiforce = (self.switch_mode != SWITCH_MODE_COMPARE) * math.copysign(dy * speed, self.mouse_move_cumulative)
+        self.mouse_move_cumulative += dx * 1.3 * speed - dy_antiforce
+        self.mouse_buffer[1] -= math.copysign(dx, self.mouse_buffer[1])
+        if dynamic:
+            self.run_reduce_flipping_speed = - .45
+        if abs(self.mouse_move_cumulative) > 100:
+            self.mark_image_and_switch(self.mouse_move_cumulative > 0)
+            self.rearm_gesture_timeout()
+
+        self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+
+        if abs(self.mouse_buffer[1]) > 100:
+            if self.autoflip_speed:
+                if self.mouse_buffer[1] > 100:
+                    self.discrete_actions(Actions.IMAGE_RANDOM_UNSEEN_FILE)
+                else:
+                    self.discrete_actions(Actions.IMAGE_FOLDER_FIRST)
+            else:
+                self.run_flip_once = 1 if self.mouse_buffer[1] > 0 else -1
+            self.mouse_buffer *= 0
+            self.rearm_gesture_timeout()
+
+    def mark_image_and_switch(self, direction):
+        direction = 1 if direction else -1
+        new_image_category = restrict(self.image_categories[self.image_index] + direction, -1, 1)
+        self.image_categories[self.image_index] = new_image_category
+        self.tinder_last_choice = new_image_category
+        self.update_tinder_stats()
+        self.mouse_buffer *= 0
+        self.next_unmarked_image()
+
+    def next_unmarked_image(self):
+        if self.tinder_stats[1] != 0:
+            self.new_image_index = self.image_index
+            while self.image_categories[self.new_image_index] != 0:
+                self.new_image_index += 1
+                self.new_image_index %= self.image_count
+            self.load_image()
+        else:
+            self.run_flip_once = 1
+
+    def update_tinder_stats(self):
+        self.tinder_stats[0] = sum(self.image_categories == -1)
+        self.tinder_stats[1] = sum(self.image_categories == 0)
+        self.tinder_stats[2] = sum(self.image_categories == 1)
 
     def mouse_circle_tracking(self):
         self.mouse_buffer *= .9
@@ -1785,6 +1925,8 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.mouse_gesture_tracking(dx, dy)
             elif self.switch_mode == SWITCH_MODE_COMPARE:
                 self.mouse_gesture_tracking(dx, dy, speed=.2, dynamic=False)
+            elif self.switch_mode == SWITCH_MODE_TINDER:
+                self.mouse_tin_tracking(dx, dy)
 
         elif self.interface_mode == INTERFACE_MODE_MENU:
             self.mouse_buffer[1] -= dy * .5
@@ -1798,7 +1940,7 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.interface_mode == INTERFACE_MODE_SETTINGS:
             if abs(self.mouse_buffer[1]) > 150:
                 self.setting_active += 1 if self.mouse_buffer[1] > 0 else -1
-                self.setting_active = (self.setting_active - 1) % len(self.configs) + 1
+                self.setting_active = self.setting_active % (len(self.configs) + 2)
                 self.mouse_buffer *= 0
 
         elif self.interface_mode == INTERFACE_MODE_LEVELS:
@@ -1899,12 +2041,12 @@ class ModernSlideShower(mglw.WindowConfig):
             pass
 
         elif self.interface_mode == INTERFACE_MODE_SETTINGS:
-            if self.setting_active == 0: return
-            self.configs[self.setting_active] = restrict(self.configs[self.setting_active] *
+            # if self.setting_active == 0: return
+            self.configs[Configs.i[self.setting_active]] = restrict(self.configs[Configs.i[self.setting_active]] *
                                                          (1 - amount) - amount / 1000 *
-                                                         self.config_formats[self.setting_active][1],
-                                                         self.config_formats[self.setting_active][0],
-                                                         self.config_formats[self.setting_active][1])
+                                                         self.config_formats[Configs.i[self.setting_active]][1],
+                                                         self.config_formats[Configs.i[self.setting_active]][0],
+                                                         self.config_formats[Configs.i[self.setting_active]][1])
 
         elif self.interface_mode == INTERFACE_MODE_LEVELS:
             self.adjust_levels(amount)
@@ -1981,6 +2123,13 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.interface_mode == INTERFACE_MODE_MENU:
             self.imgui.mouse_release_event(20, self.mouse_buffer[1], button)
 
+        if self.interface_mode == INTERFACE_MODE_SETTINGS:
+            if self.pressed_mouse == 1:
+                if self.setting_active == len(self.configs):
+                    self.save_current_settings()
+                elif self.setting_active == len(self.configs) + 1:
+                    self.switch_interface_mode(Actions.INTERFACE_MODE_GENERAL)
+
         self.pressed_mouse = self.pressed_mouse & ~button_code
         self.right_click_start = 0
         self.levels_edit_parameter = 0
@@ -1988,19 +2137,48 @@ class ModernSlideShower(mglw.WindowConfig):
             if self.transform_mode == 1:
                 self.crop_borders_active = 0
 
+    def general_arrow_events(self, action):
+        if self.switch_mode == Actions.SWITCH_MODE_TINDER:
+            if action == Actions.ACTION_GENERAL_LEFT:
+                self.mark_image_and_switch(0)
+            elif action == Actions.ACTION_GENERAL_RIGHT:
+                self.mark_image_and_switch(1)
+            elif action == Actions.ACTION_GENERAL_UP:
+                self.run_key_flipping = -1
+            elif action == Actions.ACTION_GENERAL_DOWN:
+                self.run_key_flipping = 1
+            elif action == Actions.ACTION_GENERAL_SPACE:
+                self.random_image(Actions.IMAGE_RANDOM_UNSEEN_FILE)
+
+        else:
+            if action == Actions.ACTION_GENERAL_LEFT:
+                self.run_key_flipping = -1
+            elif action == Actions.ACTION_GENERAL_RIGHT:
+                self.run_key_flipping = 1
+            elif action == Actions.ACTION_GENERAL_SPACE:
+                self.run_key_flipping = 1
+            elif action == Actions.ACTION_GENERAL_UP:
+                self.random_image(Actions.IMAGE_RANDOM_UNSEEN_FILE)
+            elif action == Actions.ACTION_GENERAL_DOWN:
+                self.first_directory_image(0)
+
+
     def discrete_actions(self, action):
 
-        if action == Actions.IMAGE_NEXT:
+        if Actions.ACTION_GENERAL_LEFT <= action <= Actions.ACTION_GENERAL_SPACE:
+            self.general_arrow_events(action)
+
+        elif action == Actions.IMAGE_NEXT:
             self.run_key_flipping = 1
 
         elif action == Actions.IMAGE_PREVIOUS:
             self.run_key_flipping = -1
 
         elif action == Actions.FILE_COPY:
-            self.move_file_out(do_copy=True)
+            self.file_copy_move_routine(do_copy=True)
 
         elif action == Actions.FILE_MOVE:
-            self.move_file_out()
+            self.file_copy_move_routine(do_copy=False)
 
         elif action == Actions.IMAGE_FOLDER_NEXT:
             self.first_directory_image(1)
@@ -2076,6 +2254,9 @@ class ModernSlideShower(mglw.WindowConfig):
 
         elif action == Actions.SWITCH_MODE_COMPARE:
             self.switch_swithing_mode(SWITCH_MODE_COMPARE)
+
+        elif action == Actions.SWITCH_MODE_TINDER:
+            self.switch_swithing_mode(SWITCH_MODE_TINDER)
 
         elif action == Actions.LEVELS_APPLY:
             self.apply_levels()
@@ -2392,6 +2573,10 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.interface_mode == INTERFACE_MODE_TRANSFORM:
             self.imgui_transforms()
 
+        # Upper stats in tinder mode
+        if self.switch_mode == SWITCH_MODE_TINDER:
+            self.imgui_tinder_stats()
+
         if len(self.pop_db) > 0:
             self.imgui_popdb()
 
@@ -2413,13 +2598,21 @@ class ModernSlideShower(mglw.WindowConfig):
         imgui.begin("Settings", False, CENRAL_WND_FLAGS)
 
         for key in self.configs.keys():
-            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (self.setting_active == key), .2, .2)
+            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (Configs.i[self.setting_active] == key), .2, .2)
             imgui.slider_float(self.config_descriptions[key], self.configs[key],
                                self.config_formats[key][0],
                                self.config_formats[key][1],
                                self.config_formats[key][2],
                                self.config_formats[key][3])
             imgui.pop_style_color()
+        imgui.dummy(10, 10)
+        imgui.push_style_color(imgui.COLOR_BUTTON, .2 + .5 * (self.setting_active == len(self.configs)), .2, .2)
+        imgui.small_button("Save settings as default")
+        imgui.pop_style_color()
+        # imgui.same_line(spacing=50)
+        imgui.push_style_color(imgui.COLOR_BUTTON, .2 + .5 * (self.setting_active == len(self.configs) + 1), .2, .2)
+        imgui.small_button("Close")
+        imgui.pop_style_color()
         imgui.end()
 
     def imgui_menu(self):
@@ -2804,6 +2997,42 @@ class ModernSlideShower(mglw.WindowConfig):
             imgui.text(item['text'])
             self.next_message_top += imgui.get_window_height() * max(item['alpha'] ** .3, item['alpha'])
             imgui.end()
+
+    def imgui_tinder_stats(self):
+        self.imgui_style.alpha = .4
+        info_text = [f"-: {self.tinder_stats[0]}", f"  {self.tinder_stats[1]}  ", f"+: {self.tinder_stats[2]}"]
+        text_colors = [[1, .6, .6], [.8, .8, .8], [.6, .6, 1]]
+        top = self.next_message_top
+        if self.image_count:
+            image_category = self.image_categories[self.image_index]
+        else:
+            image_category = 0
+        left = 10
+
+        self.imgui_style.alpha = 1 if image_category == -1 else .5
+        imgui.set_next_window_position(left, top, 1, pivot_x=0, pivot_y=0)
+        imgui.begin("Selection statistics -", True, SIDE_WND_FLAGS)
+        imgui.set_window_font_scale(1.5)
+        imgui.text_colored(info_text[0], text_colors[0][0], text_colors[0][1], text_colors[0][2], 1)
+        next_x = left + imgui.get_window_width()
+        imgui.end()
+
+        self.imgui_style.alpha = 1 if image_category == 0 else .5
+        imgui.set_next_window_position(next_x, top, 1, pivot_x=0, pivot_y=0)
+        imgui.begin("Selection statistics", True, SIDE_WND_FLAGS)
+        imgui.set_window_font_scale(1.5)
+        imgui.text_colored(info_text[1], text_colors[1][0], text_colors[1][1], text_colors[1][2], 1)
+        next_x += imgui.get_window_width()
+        imgui.end()
+
+        self.imgui_style.alpha = 1 if image_category == 1 else .5
+        imgui.set_next_window_position(next_x, top, 1, pivot_x=0, pivot_y=0)
+        imgui.begin("Selection statistics +", True, SIDE_WND_FLAGS)
+        imgui.set_window_font_scale(1.5)
+        imgui.text_colored(info_text[2], text_colors[2][0], text_colors[2][1], text_colors[2][2], 1)
+        self.next_message_top += imgui.get_window_height()
+        imgui.end()
+
 
     def imgui_compare(self):
         def show_side_info(image_index, alpha, left=True):

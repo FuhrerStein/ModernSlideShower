@@ -295,15 +295,6 @@ void main() {
         pixel_color = pixel_color * (lvl_o_max.a - lvl_o_min.a) + lvl_o_min.a;
         pixel_color = clamp(pixel_color, 0, 1);
 
-
-//        if ((gl_FragCoord.x / wnd_size.x) < .3){
-////            pixel_color = changeSaturation(pixel_color.r, pixel_color.g, pixel_color.b, saturation.x);
-//            pixel_color = change_saturation(pixel_color, saturation.x);
-//        }
-//        else{
-//            pixel_color = change_saturation_soft2(pixel_color, saturation.x);
-//        }
-
         pixel_color = change_saturation_hard(pixel_color, saturation.z);
         pixel_color = change_saturation_soft(pixel_color, saturation.w);
 
@@ -357,6 +348,7 @@ void main() {
     float half_picture_alpha = 1;
     half_picture_alpha *= step(gl_FragCoord.x, wnd_size.x * (1 - half_picture));
     half_picture_alpha *= step(- wnd_size.x * half_picture, gl_FragCoord.x);
+    half_picture_alpha = (half_picture == 0 ? 1 : half_picture_alpha);
 
     float irregular_alpha = 0;
     irregular_alpha += cos(uv0.x * 78 + uv0.y * 20) + cos(uv0.y * 78 + uv0.x * 20);
@@ -378,10 +370,8 @@ void main() {
 layout (points) in;
 layout (line_strip, max_vertices = 2) out;
 uniform float line_position;
-//uniform vec2 wnd_size;
 
 void main() {
-//    borders_rel = crop_borders / wnd_size.xyxy * 2 - 1;
     float x, y;
 
     x = line_position * 2 - 1;
@@ -396,18 +386,9 @@ void main() {
 
     #elif defined COMPARE_FRAGMENT
 
-//uniform vec2 wnd_size;
-//in float border_color;
-//in flat int work_axis;
-//in vec4 crop_borders;
-
 out vec4 fragColor;
 
 void main() {
-//    vec2 invert_size = (crop_borders.zw - crop_borders.xy) / 15;
-//    vec2 alpha = invert_size * (1 / (gl_FragCoord.xy - crop_borders.xy) + 1 / (gl_FragCoord.xy - crop_borders.zw));
-//
-//    fragColor = vec4(vec3(.8) + border_color * vec3(.2, -.3, -.3), .3 + abs(alpha[work_axis]));
     fragColor = vec4(1);
 }
 

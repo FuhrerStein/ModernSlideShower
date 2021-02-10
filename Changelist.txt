@@ -1,7 +1,6 @@
 -- Planned functionality and changes --
 
 todo: show compression and decompression progress when saving/loading lists
-todo: save settings to file
 todo: program icon
 todo: filelist position indicator
 todo: explain about jpegtran in case it was not found
@@ -22,11 +21,18 @@ todo: transition settings for next image, next folder, and first image in list
 todo: caching for mandelbrot texels
 
 read-only mode
-
+levels: contrast regulation
 
 
 -- Implemented functionality and changes --
 
+save settings to file
+Accept/reject mode, aka tinder mode. Swipe Up/Down to switch to previous/next image.
+            Swipe Left/Rigth to move it to "-"/"+" category.
+            Use M or C to move or copy categorized image.
+            Show counters of rejected/uncategorized/accepted in the upper center of the screen
+            In the couters highlight category to which current image belongs to
+            Show animation when image has been assigned to a category
 irregular smooth borders
 report how many times over all images were shown during program run
 show random unshown image
