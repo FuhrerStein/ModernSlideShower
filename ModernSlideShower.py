@@ -1073,7 +1073,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.wnd.title = "ModernSlideShower: Mandelbrot mode"
         # self.reset_pic_position()
         self.pic_angle_future = -30
-        self.pic_zoom = .1
+        self.mandel_auto_complexity = 2
+        self.pic_zoom = 1e-3
         self.pic_zoom_future = .2
         self.discrete_actions(Actions.SWITCH_MODE_CIRCLES)
         self.unschedule_pop_message(21)
@@ -1151,7 +1152,7 @@ class ModernSlideShower(mglw.WindowConfig):
         elif current_folder != self.last_image_folder:
             # self.schedule_pop_message(8, 5, current_folder=self.dir_list[current_folder:current_folder + 1])
             self.schedule_pop_message(12, 5, dir_index=current_folder + 1, dir_count=self.dir_count)
-            self.pic_pos_current += 850
+            self.pic_pos_current += self.current_texture.width / 3
         else:
             self.unschedule_pop_message(7)
 
@@ -1233,6 +1234,9 @@ class ModernSlideShower(mglw.WindowConfig):
             file_operation(full_name, new_folder)
             if not do_copy:
                 self.delete_image_from_dbs(im_index)
+                if not os.listdir(parent_folder):
+                    os.rmdir(parent_folder)
+
         except Exception as e:
             # todo good message here
             print("Could not complete file " + ["move", "copy"][do_copy], e)
@@ -2056,6 +2060,9 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.visual_move(dx, dy)
             else:
                 self.adjust_transform(amount, (dx, dy))
+
+        elif self.interface_mode == INTERFACE_MODE_MANDELBROT:
+            self.visual_move(dx, dy)
 
     def mouse_scroll_event(self, x_offset, y_offset):
         if self.interface_mode == INTERFACE_MODE_MANDELBROT:
