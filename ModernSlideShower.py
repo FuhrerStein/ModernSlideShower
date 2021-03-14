@@ -798,6 +798,8 @@ class ModernSlideShower(mglw.WindowConfig):
             self.unschedule_pop_message(8)
         self.current_texture.use(5)
         self.transition_stage = 1
+        if "-tinder_mode" in sys.argv:
+            self.switch_swithing_mode(SWITCH_MODE_TINDER)
 
     def previous_level_borders(self):
         self.levels_borders = self.levels_borders_previous
@@ -1385,7 +1387,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 correction_vector += 1j * (math.copysign(border, x_im) - x_im)
         else:
             right_edge = 1
-            if self.interface_mode in [INTERFACE_MODE_LEVELS, INTERFACE_MODE_TRANSFORM]:
+            if self.interface_mode in {INTERFACE_MODE_LEVELS, INTERFACE_MODE_TRANSFORM}:
                 right_edge = 0.8
             scr_center_w, scr_center_h = self.window_size[0] / 2 * right_edge, self.window_size[1] / 2
 
@@ -2010,7 +2012,7 @@ class ModernSlideShower(mglw.WindowConfig):
             actual_pic_size = Point((self.pic_screen_borders[2] - self.pic_screen_borders[0]) / self.pic_zoom,
                                     (self.pic_screen_borders[3] - self.pic_screen_borders[1]) / self.pic_zoom)
 
-            crop_direction = 1 if border_id in [0, 3] else -1
+            crop_direction = 1 if border_id in {0, 3} else -1
             opposite_border_id = border_id ^ 2
             axis_speed = actual_pic_size[work_axis] / self.window_size[work_axis] + 5
             button_rate = 1 + (self.pressed_mouse - 1) * axis_speed * 5
@@ -2168,7 +2170,6 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.random_image(Actions.IMAGE_RANDOM_UNSEEN_FILE)
             elif action == Actions.ACTION_GENERAL_DOWN:
                 self.first_directory_image(0)
-
 
     def discrete_actions(self, action):
 
