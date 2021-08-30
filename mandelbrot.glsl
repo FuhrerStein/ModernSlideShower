@@ -301,6 +301,8 @@ uniform dvec4 mandel_y;
 
 int n;
 
+out vec4 FragColor;
+
 float red, green, blue;
 float a1, a2, a3;
 
@@ -391,7 +393,7 @@ void main() {
     a2 = (pre_final_step - 10) * (comp_float - n - pre_final_step);
     a2 = smoothstep(-50, (comp_float - n) * (comp_float - n - 10), a2) * 2;
     a3 = smoothstep(0, (complexity - n), pre_final_step);
-    gl_FragColor  = vec4(-a3 * 0.2 + a1 * .1, a2 * (.55 - .20 * a3*.25), a2 * .99, 1);
+    FragColor  = vec4(-a3 * 0.2 + a1 * .1, a2 * (.55 - .20 * a3*.25), a2 * .99, 1);
     //    gl_FragColor  = vec4(a3 * 0.1 + a1 * .1, a2 * .7 + a3 *.2, a3 * 1, 1);
 
 //    a2 = smoothstep(0, float(final_step), complexity - n);

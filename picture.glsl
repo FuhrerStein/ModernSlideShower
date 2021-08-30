@@ -266,7 +266,7 @@ void main() {
     if ((zoom_scale > 1) && (transparency == 0) && (process_type == 0))
     {
         pixel_color_hd = pixel_color_mixed(texture0, uv0, pixel_size);
-        { pixel_color = mix(pixel_color, vec4(pixel_color_hd), smoothstep(1, 2, log10(zoom_scale))); }
+        { pixel_color = mix(pixel_color, vec4(pixel_color_hd), smoothstep(1, 2, log(zoom_scale))); }
     }
 
     if (actual_blur > 1.1)
@@ -494,4 +494,89 @@ void main() {
     fragColor.a = alpha - pow(distance(gl_PointCoord.xy, vec2(0.5)), 2.5);
 }
 
+
+#elif defined BROWSE_GEOMETRY
+
+layout (points) in;
+layout (line_strip, max_vertices = 256) out;
+uniform vec2 wnd_size;
+uniform int row;
+uniform int row_elements;
+
+in global_data{
+vec2 point_coords[4];
+vec2 uv_coords[4];
+vec4 crop_borders;
+
+float translucency;
+float f_show_amount;
+float min_edge;
+float max_edge;
+float tran_blur;
+} in_data[];
+
+out vec4 crop_borders;
+out flat int work_axis;
+out float border_color;
+const float point_rel_coords_x[8] = {  0,   0, -.02, 1.02,   1,   1, -.02, 1.02};
+const float point_rel_coords_y[8] = {-.02, 1.02,   0,   0, -.02, 1.02,   1,   1};
+vec4 borders_rel;
+out float frame_opacity;
+
+void emit_point(int point_id){
+    float x, y;
+    x = mix(borders_rel.x, borders_rel.z, point_rel_coords_x[point_id]);
+    y = mix(borders_rel.y, borders_rel.w, point_rel_coords_y[point_id]);
+    gl_Position = vec4(x, y, 0.0, 1.0);
+    EmitVertex();
+}
+
+
+void emit_line(int line_id){
+    emit_point(line_id);
+    emit_point(line_id + 1);
+    EndPrimitive();
+}
+
+void emit_square(vec2 center, float frame_size){
+    borders_rel = vec4(center.x - frame_size, center.y - frame_size, center.x + frame_size, center.y + frame_size);
+    borders_rel = borders_rel / wnd_size.xyxy * 2 - 1;
+    float size_opacity = 2 - 5 * frame_size / min(wnd_size.x, wnd_size.y);
+    size_opacity = smoothstep(0, 5, size_opacity);
+    float edge_opacity = min(min(center.x, wnd_size.x - center.x), min(center.y, wnd_size.y - center.y)) / frame_size - .66;
+    edge_opacity = smoothstep(0, 1, edge_opacity);
+    frame_opacity = size_opacity * edge_opacity;
+
+    emit_line(0);
+    emit_line(2);
+    emit_line(4);
+    emit_line(6);
+}
+
+void main() {
+    crop_borders = in_data[0].crop_borders;
+    vec2 pic_center = vec2(crop_borders.x + crop_borders.z, crop_borders.y + crop_borders.w) / 2;
+    float frame_size = max(crop_borders.z - crop_borders.x, crop_borders.w - crop_borders.y) / 2;
+    for (int i = - row_elements; i <= row_elements; i++) {
+            emit_square(pic_center + vec2(frame_size * 2.25 * i, frame_size * 2.25 * row), frame_size);
+        }
+}
+
+    #elif defined BROWSE_FRAGMENT
+
+uniform vec2 wnd_size;
+in float border_color;
+in float frame_opacity;
+in flat int work_axis;
+in vec4 crop_borders;
+
+out vec4 fragColor;
+
+void main() {
+    vec2 invert_size = (crop_borders.zw - crop_borders.xy) / 15;
+    fragColor = vec4(vec3(.8), frame_opacity);
+}
+
+
     #endif
+

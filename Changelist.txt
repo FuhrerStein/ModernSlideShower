@@ -26,6 +26,7 @@ levels: contrast regulation
 
 -- Implemented functionality and changes --
 
+exit program if all images are moved away
 save settings to file
 Accept/reject mode, aka tinder mode. Swipe Up/Down to switch to previous/next image.
             Swipe Left/Rigth to move it to "-"/"+" category.

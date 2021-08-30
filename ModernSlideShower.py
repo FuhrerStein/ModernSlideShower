@@ -24,7 +24,6 @@ import pyglet
 import json
 from mpmath import mp
 
-
 # from scipy.interpolate import BSpline
 
 # Settings names
@@ -54,7 +53,7 @@ SWITCH_MODE_COMPARE = 32
 SWITCH_MODE_TINDER = 33
 
 BUTTON_STICKING_TIME = 0.3  # After passing this time button acts as temporary.
-IMAGE_UN_UNSEE_TIME = 0.2   # Time needed to consider image as been seen
+IMAGE_UN_UNSEE_TIME = 0.2  # Time needed to consider image as been seen
 
 
 class Actions:
@@ -144,6 +143,8 @@ class Actions:
     ACTION_GENERAL_DOWN = 93
     ACTION_GENERAL_SPACE = 94
 
+    WINDOW_SWITCH_FULLSCREEN = 95
+
     CLOSE_PROGRAM = 100
 
 
@@ -162,6 +163,7 @@ class Configs:
         "Save",
         "Close"
     ]
+
 
 CENRAL_WND_FLAGS = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | \
                    imgui.WINDOW_NO_INPUTS | imgui.WINDOW_NO_COLLAPSE
@@ -310,7 +312,6 @@ KEYBOARD_SHORTCUTS = {
     (rls, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.NUM_SUBTRACT): Actions.KEYBOARD_MOVEMENT_ZOOM_OUT_OFF,
     (rls, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.MINUS): Actions.KEYBOARD_MOVEMENT_ZOOM_OUT_OFF,
 
-
     (prs, INTERFACE_MODE_LEVELS, False, False, False, KEY.SEMICOLON): Actions.LEVELS_TOGGLE,
     (rls, INTERFACE_MODE_LEVELS, False, False, False, KEY.SEMICOLON): Actions.LEVELS_TOGGLE,
 
@@ -323,6 +324,7 @@ KEYBOARD_SHORTCUTS = {
     (prs, INTERFACE_MODE_LEVELS, False, False, False, KEY.B): Actions.LEVELS_SELECT_BLUE,
 
     (prs, INTERFACE_MODE_TRANSFORM, False, False, False, KEY.ENTER): Actions.APPLY_TRANSFORM,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.F): Actions.WINDOW_SWITCH_FULLSCREEN,
 
     (rls, INTERFACE_MODE_GENERAL, False, True, False, KEY.RIGHT): Actions.KEYBOARD_MOVEMENT_MOVE_RIGHT_OFF,
     (rls, INTERFACE_MODE_GENERAL, False, True, False, KEY.LEFT): Actions.KEYBOARD_MOVEMENT_MOVE_LEFT_OFF,
@@ -345,7 +347,8 @@ KEYBOARD_SHORTCUTS = {
     (prs, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.BRACKETLEFT): Actions.KEYBOARD_MOVEMENT_LEFT_BRACKET_ON,
     (prs, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.BRACKETRIGHT): Actions.KEYBOARD_MOVEMENT_RIGHT_BRACKET_ON,
     (rls, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.BRACKETLEFT): Actions.KEYBOARD_MOVEMENT_LEFT_BRACKET_OFF,
-    (rls, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.BRACKETRIGHT): Actions.KEYBOARD_MOVEMENT_RIGHT_BRACKET_OFF,
+    (
+    rls, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.BRACKETRIGHT): Actions.KEYBOARD_MOVEMENT_RIGHT_BRACKET_OFF,
 
     (prs, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.Z): Actions.MANDEL_GOOD_ZONES_TOGGLE,
     (prs, INTERFACE_MODE_MANDELBROT, False, False, False, KEY.D): Actions.MANDEL_DEBUG_TOGGLE,
@@ -404,6 +407,7 @@ POP_MESSAGE_TEXT = [
     "All images were shown {many_times}",  # 21
     "Tinder mode",  # 22
     "Settings saved",  # 23
+    "No images in folder. Press Esc to close. Switching to Mandelbrot mode in {show_time} seconds",  # 24
 ]
 
 CENTRAL_MESSAGE = ["",
@@ -439,6 +443,7 @@ Usage shortcuts
 [L] : show/hide levels edit interface
 [T] : enter image transform mode
 [I] : show/hide basic image information
+[F] : switch full screen mode
 [Ctrl+R] : revert changes to original image
 
 ''',
@@ -566,6 +571,7 @@ class ModernSlideShower(mglw.WindowConfig):
     gl_program_round = moderngl.program
     gl_program_mandel = [moderngl.program] * 3
     gl_program_crop = moderngl.program
+    gl_program_browse = moderngl.program
     gl_program_compare = moderngl.program
     mandel_id = 0
     program_id = 0
@@ -733,6 +739,8 @@ class ModernSlideShower(mglw.WindowConfig):
         picture_fragment_text = program_source('PICTURE_FRAGMENT', "picture_fragment", picture_program_text).source
         crop_geometry_text = program_source('CROP_GEOMETRY', "crop_geometry", picture_program_text).source
         crop_fragment_text = program_source('CROP_FRAGMENT', "crop_fragment", picture_program_text).source
+        browse_geometry_text = program_source('BROWSE_GEOMETRY', "browse_geometry", picture_program_text).source
+        browse_fragment_text = program_source('BROWSE_FRAGMENT', "browse_fragment", picture_program_text).source
         compare_vertex_text = program_source('COMPARE_VETREX', "compare_vertex", picture_program_text).source
         compare_geometry_text = program_source('COMPARE_GEOMETRY', "compare_geometry", picture_program_text).source
         compare_fragment_text = program_source('COMPARE_FRAGMENT', "compare_fragment", picture_program_text).source
@@ -750,6 +758,9 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_crop = self.ctx.program(vertex_shader=picture_vertex_text,
                                                 geometry_shader=crop_geometry_text,
                                                 fragment_shader=crop_fragment_text)
+        self.gl_program_browse = self.ctx.program(vertex_shader=picture_vertex_text,
+                                                  geometry_shader=browse_geometry_text,
+                                                  fragment_shader=browse_fragment_text)
         self.gl_program_compare = self.ctx.program(vertex_shader=compare_vertex_text,
                                                    geometry_shader=compare_geometry_text,
                                                    fragment_shader=compare_fragment_text)
@@ -800,6 +811,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.transition_stage = 1
         if "-tinder_mode" in sys.argv:
             self.switch_swithing_mode(SWITCH_MODE_TINDER)
+        # self.reset_pic_position(False)
 
     def previous_level_borders(self):
         self.levels_borders = self.levels_borders_previous
@@ -1188,7 +1200,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 im_index = self.previous_image_index
 
         if self.switch_mode == SWITCH_MODE_TINDER:
-            for score, label in ((-1, "--"), (1, "++")):
+            for score, label in ((-1, "..\\--"), (1, "..\\++")):
                 indecies = np.asarray(self.image_categories == score).nonzero()
                 for i in indecies[0][::-1]:
                     self.file_operation(i, label, do_copy)
@@ -1213,7 +1225,12 @@ class ModernSlideShower(mglw.WindowConfig):
                 # self.schedule_pop_message(0, duration=10, file_name=short_name, new_folder=new_folder)
                 self.schedule_pop_message(13, duration=10)
             else:
-                self.switch_interface_mode(Actions.INTERFACE_MODE_MANDELBROT)
+                self.new_image_index = 0
+                self.pic_zoom_future = 1e-12
+                self.schedule_pop_message(24, duration=8, show_time=8)
+                self.central_message_showing = 3
+                # self.load_image()
+                # self.switch_interface_mode(Actions.INTERFACE_MODE_MANDELBROT)
         else:
             # self.schedule_pop_message(1, duration=10, file_name=short_name, new_folder=new_folder)
             self.schedule_pop_message(14, duration=10)
@@ -1256,10 +1273,10 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.image_categories = np.delete(self.image_categories, im_index)
         self.update_tinder_stats()
-        new_unseen_set = {i if i < im_index else i-1 for i in self.unseen_images}
+        new_unseen_set = {i if i < im_index else i - 1 for i in self.unseen_images}
         self.unseen_images = new_unseen_set
         self.image_count -= 1
-        print(im_index, self.image_index)
+        # print(im_index, self.image_index)
         if im_index < self.image_index:
             self.image_index -= 1
 
@@ -1556,8 +1573,9 @@ class ModernSlideShower(mglw.WindowConfig):
         if reduced_width:
             wnd_width *= .78
 
-        self.pic_zoom_future = min(wnd_width / self.current_texture.width,
-                                   wnd_height / self.current_texture.height) * .99
+        if self.current_texture != moderngl.Texture:
+            self.pic_zoom_future = min(wnd_width / self.current_texture.width,
+                                       wnd_height / self.current_texture.height) * .99
 
         self.mouse_move_cumulative = 0
         self.gesture_mode_timeout = self.timer.time + .2
@@ -1725,7 +1743,6 @@ class ModernSlideShower(mglw.WindowConfig):
         else:
             self.gl_program_pic[self.program_id]['transparency'] = 0
 
-
         self.gl_program_borders['displacement'] = displacement
         self.gl_program_borders['zoom_scale'] = self.pic_zoom
         self.gl_program_borders['angle'] = math.radians(self.pic_angle)
@@ -1747,6 +1764,15 @@ class ModernSlideShower(mglw.WindowConfig):
             self.gl_program_crop['resize_y'] = self.resize_y - 1
             self.gl_program_crop['angle'] = math.radians(self.pic_angle)
 
+        # self.gl_program_browse['active_border_id'] = self.crop_borders_active
+        # self.gl_program_browse['crop'] = tuple(self.crop_borders)
+        self.gl_program_browse['zoom_scale'] = self.pic_zoom
+        self.gl_program_browse['displacement'] = displacement
+        # self.gl_program_browse['resize_xy'] = self.resize_xy - 1
+        # self.gl_program_browse['resize_x'] = self.resize_x - 1
+        # self.gl_program_browse['resize_y'] = self.resize_y - 1
+        # self.gl_program_browse['angle'] = math.radians(self.pic_angle)
+
     def resize(self, width: int, height: int):
         self.imgui.resize(width, height)
         self.window_size = Point(width, height)
@@ -1756,10 +1782,12 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_mandel[1]['half_wnd_size'] = half_wnd_size
         self.gl_program_mandel[2]['half_wnd_size'] = half_wnd_size
         self.gl_program_crop['wnd_size'] = wnd_size
+        self.gl_program_browse['wnd_size'] = wnd_size
         self.gl_program_round['wnd_size'] = wnd_size
         self.gl_program_borders['wnd_size'] = wnd_size
         self.gl_program_pic[0]['wnd_size'] = wnd_size
         self.gl_program_pic[1]['wnd_size'] = wnd_size
+        self.reset_pic_position(False)
 
     def switch_swithing_mode(self, new_mode, toggle=True):
         if toggle and self.switch_mode == new_mode:
@@ -2049,10 +2077,13 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.interface_mode == INTERFACE_MODE_SETTINGS:
             # if self.setting_active == 0: return
             self.configs[Configs.i[self.setting_active]] = restrict(self.configs[Configs.i[self.setting_active]] *
-                                                         (1 - amount) - amount / 1000 *
-                                                         self.config_formats[Configs.i[self.setting_active]][1],
-                                                         self.config_formats[Configs.i[self.setting_active]][0],
-                                                         self.config_formats[Configs.i[self.setting_active]][1])
+                                                                    (1 - amount) - amount / 1000 *
+                                                                    self.config_formats[Configs.i[self.setting_active]][
+                                                                        1],
+                                                                    self.config_formats[Configs.i[self.setting_active]][
+                                                                        0],
+                                                                    self.config_formats[Configs.i[self.setting_active]][
+                                                                        1])
 
         elif self.interface_mode == INTERFACE_MODE_LEVELS:
             self.adjust_levels(amount)
@@ -2181,6 +2212,10 @@ class ModernSlideShower(mglw.WindowConfig):
 
         elif action == Actions.IMAGE_PREVIOUS:
             self.run_key_flipping = -1
+
+        elif action == Actions.WINDOW_SWITCH_FULLSCREEN:
+            self.wnd.fullscreen = not self.wnd.fullscreen
+            self.wnd.mouse_exclusivity = self.wnd.fullscreen
 
         elif action == Actions.FILE_COPY:
             self.file_copy_move_routine(do_copy=True)
@@ -2527,6 +2562,25 @@ class ModernSlideShower(mglw.WindowConfig):
 
             if self.interface_mode == INTERFACE_MODE_TRANSFORM:
                 self.picture_vao.render(self.gl_program_crop, vertices=1)
+
+            pic_w = self.pic_screen_borders[2] - self.pic_screen_borders[0]
+            pic_h = self.pic_screen_borders[3] - self.pic_screen_borders[1]
+            small_zoom_w = pic_w < self.window_size[0] * .9
+            small_zoom_h = pic_h < self.window_size[1] * .9
+            small_zoom = self.pic_screen_borders[2] != self.pic_screen_borders[0]
+            small_zoom &= small_zoom_w or small_zoom_h
+
+            if small_zoom:
+                thumb_size = max(pic_w, pic_h)
+                thumb_rows = int(self.window_size.y / thumb_size / 2 + .5)
+                thumb_rows = min(9, thumb_rows)
+                row_elements = int(self.window_size.x / thumb_size / 2 + .5)
+                row_elements = min(15, row_elements)
+                for row in range(-thumb_rows, thumb_rows + 1):
+                    self.gl_program_browse['row'] = row
+                    self.gl_program_browse['row_elements'] = row_elements
+                    self.picture_vao.render(self.gl_program_browse, vertices=1)
+
             self.ctx.enable_only(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
             if self.switch_mode != SWITCH_MODE_COMPARE:
                 self.round_vao.render(self.gl_program_round)
@@ -2555,6 +2609,8 @@ class ModernSlideShower(mglw.WindowConfig):
             self.do_auto_flip()
         if self.current_image_is_unseen:
             self.unseen_image_routine()
+        if self.pic_zoom < 1e-6:
+            self.discrete_actions(Actions.CLOSE_PROGRAM)
 
     def render_ui(self):
         imgui.new_frame()
@@ -2606,7 +2662,8 @@ class ModernSlideShower(mglw.WindowConfig):
         imgui.begin("Settings", False, CENRAL_WND_FLAGS)
 
         for key in self.configs.keys():
-            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (Configs.i[self.setting_active] == key), .2, .2)
+            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (Configs.i[self.setting_active] == key), .2,
+                                   .2)
             imgui.slider_float(self.config_descriptions[key], self.configs[key],
                                self.config_formats[key][0],
                                self.config_formats[key][1],
@@ -3041,7 +3098,6 @@ class ModernSlideShower(mglw.WindowConfig):
         self.next_message_top += imgui.get_window_height()
         imgui.end()
 
-
     def imgui_compare(self):
         def show_side_info(image_index, alpha, left=True):
             self.imgui_style.alpha = alpha
@@ -3081,9 +3137,12 @@ def main_loop() -> None:
         start_fullscreen = not start_fullscreen
 
     enable_vsync = True
-    window = mglw.get_local_window_cls('pyglet')(fullscreen=start_fullscreen, vsync=enable_vsync)
+    # window = mglw.get_local_window_cls('pyglet')(fullscreen=start_fullscreen, vsync=enable_vsync)
+    window = mglw.get_local_window_cls('pyglet')(vsync=enable_vsync)
     if start_fullscreen:
         window.mouse_exclusivity = True
+        window.fullscreen = True
+
     window.print_context_info()
     mglw.activate_context(window=window)
     timer = mglw.timers.clock.Timer()
