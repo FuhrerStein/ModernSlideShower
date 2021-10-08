@@ -471,6 +471,7 @@ layout(location = 0) in vec2 in_position;
 
 uniform vec2 wnd_size;
 uniform int finish_n;
+uniform bool move_to_right = false;
 
 out float alpha;
 
@@ -480,7 +481,11 @@ void main() {
     float s2 = smoothstep(finish_n - 10, finish_n * 1.1, point_n_norm);
     alpha = round_alpha * (s1 + 1 - s2);
 
-    gl_Position = vec4(in_position / wnd_size - 1, .5, 1.0);
+    vec2 point_coords = in_position / wnd_size - 1;
+    if (move_to_right){
+        point_coords.x = - point_coords.x;
+    }
+    gl_Position = vec4(point_coords, .5, 1.0);
     gl_PointSize = point_size;
 }
 
@@ -497,6 +502,7 @@ void main() {
 
 #elif defined BROWSE_GEOMETRY
 
+layout(binding=8) uniform sampler2D thumb_textures;
 layout (points) in;
 layout (line_strip, max_vertices = 256) out;
 uniform vec2 wnd_size;

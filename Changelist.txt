@@ -19,6 +19,7 @@ todo: "repeat last levels" single-key operation
 todo: rewrite help for other modes: levels, transform, mandelbrot
 todo: transition settings for next image, next folder, and first image in list
 todo: caching for mandelbrot texels
+todo: do not switch immadiately at edges in compare mode
 
 read-only mode
 levels: contrast regulation
@@ -26,6 +27,8 @@ levels: contrast regulation
 
 -- Implemented functionality and changes --
 
+add accept/reject selector in compare mode
+eliminate gesture mode
 exit program if all images are moved away
 save settings to file
 Accept/reject mode, aka tinder mode. Swipe Up/Down to switch to previous/next image.
