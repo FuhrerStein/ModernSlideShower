@@ -13,7 +13,7 @@ import rawpy
 from moderngl_window.opengl import program
 from moderngl_window.integrations.imgui import ModernglWindowRenderer
 from PIL import Image, ExifTags
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage import gaussian_filter
 import numpy as np
 import math
 import os
@@ -170,11 +170,11 @@ CENRAL_WND_FLAGS = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE | imgui.WINDOW_
 SIDE_WND_FLAGS = CENRAL_WND_FLAGS | imgui.WINDOW_NO_TITLE_BAR
 
 LIST_FILE_TYPE = 'sldlist'
-JPEGTRAN_EXE_PATH = "c:\\Soft\\Programs\\libjpeg-turbo64\\bin"
+JPEGTRAN_EXE_PATH = "c:\\Soft\\libjpeg-turbo-gcc\\bin"
 JPEGTRAN_EXE_FILE = "jpegtran.exe"
 JPEGTRAN_OPTIONS = ' -optimize -rotate {0} -trim -copy all -outfile "{1}" "{1}"'
 
-IMAGE_FILE_TYPES = ('jpg', 'png', 'jpeg', 'gif', 'tif', 'tiff')
+IMAGE_FILE_TYPES = ('jpg', 'png', 'jpeg', 'gif', 'tif', 'tiff', 'webp')
 RAW_FILE_TYPES = ('nef', 'dng', 'arw')
 ALL_FILE_TYPES = IMAGE_FILE_TYPES + RAW_FILE_TYPES
 EMPTY_IMAGE_LIST = "Empty.jpg"
@@ -241,6 +241,8 @@ KEYBOARD_SHORTCUTS = {
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.I): Actions.TOGGLE_IMAGE_INFO,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.C): Actions.FILE_COPY,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.M): Actions.FILE_MOVE,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.NUM_0): Actions.FILE_MOVE,
+    (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.NUM_INSERT): Actions.FILE_MOVE,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.BACKSLASH): Actions.FILE_MOVE,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.COMMA): Actions.PIC_ROTATE_LEFT,
     (prs, INTERFACE_MODE_GENERAL, False, False, False, KEY.PERIOD): Actions.PIC_ROTATE_RIGHT,
@@ -545,7 +547,7 @@ class ModernSlideShower(mglw.WindowConfig):
     dir_to_file = []
     file_to_dir = []
     image_categories = []
-    tinder_stats = np.zeros(3, dtype=np.int)
+    tinder_stats = np.zeros(3, dtype=int)
     tinder_last_choice = 0
 
     unseen_images = set()
@@ -718,7 +720,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
         x = np.arange(0, 32)
         y = x[:, np.newaxis]
-        self.mandel_zones_mask = np.exp(-((x - 16) ** 2 + (y - 16) ** 2) / 50).astype(np.float, order='F')
+        self.mandel_zones_mask = np.exp(-((x - 16) ** 2 + (y - 16) ** 2) / 50).astype(float, order='F')
 
         self.picture_vao = mglw.opengl.vao.VAO("main_image", mode=moderngl.POINTS)
 
@@ -791,7 +793,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def post_init(self):
         self.get_images()
-        if "-r" in sys.argv:
+        if "-r" in sys.argv or "-F7" in sys.argv:
             self.start_with_random_image = True
 
         self.window_size = self.wnd.size
@@ -802,11 +804,11 @@ class ModernSlideShower(mglw.WindowConfig):
             return
 
         # self.unseen_images = set(range(self.image_count))
-        self.image_categories = np.zeros(self.image_count, dtype=np.int)
+        self.image_categories = np.zeros(self.image_count, dtype=int)
         self.update_tinder_stats()
         self.find_common_path()
         if self.start_with_random_image:
-            self.random_image()
+            self.random_image(Actions.IMAGE_RANDOM_DIR_FIRST_FILE if "-F7" in sys.argv else None)
         else:
             self.load_image()
             self.unschedule_pop_message(7)
@@ -1224,7 +1226,11 @@ class ModernSlideShower(mglw.WindowConfig):
             indices = np.asarray(self.image_categories == score).nonzero()
             for i in indices[0][::-1]:
                 self.file_operation(i, label, do_copy)
-
+        
+        self.image_categories = np.zeros(self.image_count, dtype=int)
+        self.tinder_stats[0] = 0
+        self.tinder_stats[2] = 0
+        
         if not self.switch_mode == SWITCH_MODE_COMPARE:
             self.mouse_move_cumulative = self.mouse_move_cumulative * .05
 
@@ -1270,7 +1276,7 @@ class ModernSlideShower(mglw.WindowConfig):
         try:
             file_operation(full_name, new_folder)
             if not do_copy:
-                self.delete_image_from_dbs(im_index)
+                # self.delete_image_from_dbs(im_index)
                 if not os.listdir(parent_folder):
                     os.rmdir(parent_folder)
 
@@ -1909,11 +1915,13 @@ class ModernSlideShower(mglw.WindowConfig):
             working_index = self.previous_image_index
         else:
             working_index = self.image_index
-        new_image_category = self.image_categories[working_index] + (1 if go_right else -1)
-        new_image_category = restrict(new_image_category, -1, 1)
+        old_image_category = self.image_categories[working_index]
+        new_image_category = restrict(old_image_category + (1 if go_right else -1), -1, 1)
         self.image_categories[working_index] = new_image_category
         self.tinder_last_choice = new_image_category
-        self.update_tinder_stats()
+        # self.update_tinder_stats()
+        self.tinder_stats[old_image_category + 1] -= 1
+        self.tinder_stats[new_image_category + 1] += 1
         self.mouse_buffer *= 0
         if not compare_mode:
             self.next_unmarked_image()
@@ -1963,14 +1971,18 @@ class ModernSlideShower(mglw.WindowConfig):
         self.mouse_buffer += [dx, dy]
 
         if self.interface_mode == INTERFACE_MODE_GENERAL:
-            if self.switch_mode == SWITCH_MODE_CIRCLES:
-                self.mouse_circle_tracking()
-            # elif self.switch_mode == SWITCH_MODE_GESTURES:
-            #     self.mouse_gesture_tracking(dx, dy)
-            elif self.switch_mode == SWITCH_MODE_COMPARE:
-                self.mouse_gesture_tracking(dx, dy, speed=.2, dynamic=False)
-            elif self.switch_mode == SWITCH_MODE_TINDER:
-                self.mouse_tin_tracking(dx, dy)
+            null_zoom = min(self.window_size[0] / self.current_texture.width,
+                        self.window_size[1] / self.current_texture.height) * .99
+            zoom_ratio = 1 - null_zoom / max(self.pic_zoom, 0.001)
+            if zoom_ratio > 0.1:
+                self.move_image(dx, -dy)
+            else:
+                if self.switch_mode == SWITCH_MODE_CIRCLES:
+                    self.mouse_circle_tracking()
+                elif self.switch_mode == SWITCH_MODE_COMPARE:
+                    self.mouse_gesture_tracking(dx, dy, speed=.2, dynamic=False)
+                elif self.switch_mode == SWITCH_MODE_TINDER:
+                    self.mouse_tin_tracking(dx, dy)
 
         elif self.interface_mode == INTERFACE_MODE_MENU:
             self.mouse_buffer[1] -= dy * .5
@@ -2078,8 +2090,11 @@ class ModernSlideShower(mglw.WindowConfig):
     def mouse_drag_event(self, x, y, dx, dy):
         amount = (dy * 5 - dx) / 1500
         self.right_click_start -= (abs(dx) + abs(dy)) * .01
-        if self.interface_mode == INTERFACE_MODE_GENERAL:
-            self.visual_move(dx, dy)
+        if self.interface_mode == INTERFACE_MODE_GENERAL:            
+            if self.pressed_mouse == 1:
+                pass
+            else:
+                self.visual_move(dx, dy)
 
         elif self.interface_mode == INTERFACE_MODE_MENU:
             pass
