@@ -603,9 +603,11 @@ class ModernSlideShower(mglw.WindowConfig):
     split_line = 0
 
     right_click_start = 0
+    left_click_start = 0
     next_message_top = 0
     menu_top = 0
-    menu_bottom = 0
+    menu_bottom = 1
+    menu_clicked_last_time = 0
 
     current_frame_start_time = 0
     last_frame_duration = 0
@@ -1973,7 +1975,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.interface_mode == INTERFACE_MODE_GENERAL:
             null_zoom = min(self.window_size[0] / self.current_texture.width,
                         self.window_size[1] / self.current_texture.height) * .99
-            zoom_ratio = 1 - null_zoom / max(self.pic_zoom, 0.001)
+            zoom_ratio = 1 - null_zoom / max(self.pic_zoom_future, 0.001)
             if zoom_ratio > 0.1:
                 self.move_image(dx, -dy)
             else:
@@ -1985,13 +1987,14 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.mouse_tin_tracking(dx, dy)
 
         elif self.interface_mode == INTERFACE_MODE_MENU:
-            self.mouse_buffer[1] -= dy * .5
-            # self.mouse_buffer[1] = restrict(self.mouse_buffer[1], self.menu_top, self.menu_bottom)
-            self.mouse_buffer[1] -= self.menu_top
-            self.mouse_buffer[1] %= self.menu_bottom - self.menu_top
-            self.mouse_buffer[1] += self.menu_top
+            # self.mouse_buffer[1] -= dy * .5
+            # # self.mouse_buffer[1] = restrict(self.mouse_buffer[1], self.menu_top, self.menu_bottom)
+            # self.mouse_buffer[1] -= self.menu_top
+            # self.mouse_buffer[1] %= self.menu_bottom - self.menu_top
+            # self.mouse_buffer[1] += self.menu_top
 
-            self.imgui.mouse_position_event(20, self.mouse_buffer[1], None, None)
+            self.mouse_buffer[1] = restrict(self.mouse_buffer[1] - dy * .5, self.menu_top, self.menu_bottom)
+            self.imgui.mouse_position_event(20, self.mouse_buffer[1], 0, 0)
 
         elif self.interface_mode == INTERFACE_MODE_SETTINGS:
             if abs(self.mouse_buffer[1]) > 150:
@@ -2088,16 +2091,27 @@ class ModernSlideShower(mglw.WindowConfig):
         self.update_levels(edit_parameter)
 
     def mouse_drag_event(self, x, y, dx, dy):
+        # self.mouse_buffer += [dx, dy]
         amount = (dy * 5 - dx) / 1500
         self.right_click_start -= (abs(dx) + abs(dy)) * .01
         if self.interface_mode == INTERFACE_MODE_GENERAL:            
             if self.pressed_mouse == 1:
-                pass
+                if dy > 3:
+                    self.show_image_info += 1
+                elif dy < -3:
+                    self.show_image_info -= 1
+                if self.show_image_info == 3:
+                    self.switch_interface_mode(INTERFACE_MODE_MENU)
+                self.show_image_info = restrict(self.show_image_info, 0, 2)
             else:
                 self.visual_move(dx, dy)
-
         elif self.interface_mode == INTERFACE_MODE_MENU:
-            pass
+            # self.mouse_position_event(x, y, dx, dy)
+            self.mouse_buffer[1] += dy * .5
+            self.mouse_buffer[1] = restrict(self.mouse_buffer[1], self.menu_top, self.menu_bottom)
+            # self.imgui.mouse_position_event(20, self.mouse_buffer[1], 0, 0)
+            self.imgui.mouse_position_event(20, self.mouse_buffer[1], 0, 0)
+            self.imgui.mouse_press_event(20, self.mouse_buffer[1], 1)
 
         elif self.interface_mode == INTERFACE_MODE_SETTINGS:
             # if self.setting_active == 0: return
@@ -2153,6 +2167,10 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.interface_mode == INTERFACE_MODE_MENU:
             # self.imgui.mouse_position_event(20, self.mouse_buffer[1] / 5, None, None)
             self.imgui.mouse_press_event(20, self.mouse_buffer[1], button)
+            pass
+        elif self.interface_mode == INTERFACE_MODE_GENERAL and button == 1:
+            self.left_click_start = self.timer.time
+            self.show_image_info = 1
 
         if self.interface_mode == INTERFACE_MODE_LEVELS and self.levels_enabled:
             if self.levels_edit_band == 4:
@@ -2171,7 +2189,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 if self.pressed_mouse == 3:
                     self.crop_borders_active = 5
 
-        if self.pressed_mouse == 5:
+        if self.pressed_mouse == 3:
             self.random_image()
         if self.pressed_mouse == 6:
             self.autoflip_toggle()
@@ -2184,9 +2202,15 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.switch_interface_mode(INTERFACE_MODE_MENU)
             elif self.interface_mode != INTERFACE_MODE_MANDELBROT:
                 self.switch_interface_mode(INTERFACE_MODE_GENERAL)
+        if self.interface_mode == INTERFACE_MODE_GENERAL and button == 1:
+            self.show_image_info = 0
+            if self.timer.time - self.left_click_start < .2:
+                self.reset_pic_position(False)
 
-        if self.interface_mode == INTERFACE_MODE_MENU:
+        if self.interface_mode == INTERFACE_MODE_MENU and button == 1:
+            # self.imgui.mouse_press_event(20, self.mouse_buffer[1], button)
             self.imgui.mouse_release_event(20, self.mouse_buffer[1], button)
+            # self.menu_clicked_last_time = self.timer.time
 
         if self.interface_mode == INTERFACE_MODE_SETTINGS:
             if self.pressed_mouse == 1:
@@ -2729,15 +2753,8 @@ class ModernSlideShower(mglw.WindowConfig):
                 if item == "--":
                     imgui.separator()
                 else:
-                    if item[2] is None:
-                        checked = False
-                    else:
-                        checked = item[2](self)
-
-                    if item[3] is None:
-                        enabled = True
-                    else:
-                        enabled = item[3](self)
+                    checked = False if item[2] is None else item[2](self)
+                    enabled = True if item[3] is None else item[3](self)
 
                     clicked, selected = imgui.menu_item(item[0], item[1], checked, enabled)
                     if clicked:
