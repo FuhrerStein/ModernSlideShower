@@ -807,7 +807,8 @@ class ModernSlideShower(mglw.WindowConfig):
 
         # self.unseen_images = set(range(self.image_count))
         self.image_categories = np.zeros(self.image_count, dtype=int)
-        self.update_tinder_stats()
+        self.tinder_stats[1] = self.image_count
+        # self.update_tinder_stats()
         self.find_common_path()
         if self.start_with_random_image:
             self.random_image(Actions.IMAGE_RANDOM_DIR_FIRST_FILE if "-F7" in sys.argv else None)
@@ -1943,6 +1944,55 @@ class ModernSlideShower(mglw.WindowConfig):
         self.tinder_stats[1] = sum(self.image_categories == 0)
         self.tinder_stats[2] = sum(self.image_categories == 1)
 
+    def adjust_transform(self, amount, amount_xy):
+        if self.transform_mode == 1 and self.crop_borders_active:  # resizing
+            if self.crop_borders_active == 1:
+                button_rate = 1 + (self.pressed_mouse - 1) * 40
+                button_rate = (1 - (amount_xy[1] * 5 - amount_xy[0]) / 50000 * button_rate)
+                self.resize_xy = restrict(self.resize_xy * button_rate - amount / 1000, 0.1, 10)
+            elif self.crop_borders_active == 4:
+                button_rate_x = -amount_xy[0] / 10000
+                button_rate_y = amount_xy[1] / 10000
+                self.resize_x = restrict(self.resize_x * (1 - button_rate_x) - button_rate_x, 0.1, 10)
+                self.resize_y = restrict(self.resize_y * (1 - button_rate_y) - button_rate_y, 0.1, 10)
+
+        elif self.transform_mode == 2 and self.crop_borders_active:  # cropping
+            if self.crop_borders_active == 5:
+                self.pic_angle_future += (- amount_xy[0] + amount_xy[1]) / 15
+                self.unschedule_pop_message(2)
+                return
+            border_id = self.crop_borders_active - 1
+            crops = self.crop_borders
+            work_axis = border_id & 1
+            crop_amount = amount_xy[work_axis] / 10
+            actual_pic_size = Point((self.pic_screen_borders[2] - self.pic_screen_borders[0]) / self.pic_zoom,
+                                    (self.pic_screen_borders[3] - self.pic_screen_borders[1]) / self.pic_zoom)
+
+            crop_direction = 1 if border_id in {0, 3} else -1
+            opposite_border_id = border_id ^ 2
+            axis_speed = actual_pic_size[work_axis] / self.window_size[work_axis] + 5
+            button_rate = 1 + (self.pressed_mouse - 1) * axis_speed * 5
+            crop_change_amount = crop_amount * button_rate * crop_direction
+            crops[border_id] += crop_change_amount
+            if self.pic_screen_borders[2 + work_axis] - self.pic_screen_borders[0 + work_axis] < 5 * self.pic_zoom:
+                crops[opposite_border_id] -= crop_change_amount + .3 * self.pic_zoom
+
+    def adjust_levels(self, amount):
+        edit_parameter = self.levels_edit_parameter - 1
+        if edit_parameter > 2 and self.levels_edit_band < 4:
+            amount = - amount
+        if self.levels_edit_band == 4:
+            self.levels_borders[5][edit_parameter] = restrict(
+                self.levels_borders[5][edit_parameter] * (1 - amount), 0.01, 10)
+            self.update_levels(5)
+        elif edit_parameter == 2:
+            self.levels_borders[edit_parameter][self.levels_edit_band] = restrict(
+                self.levels_borders[edit_parameter][self.levels_edit_band] * (1 + amount), 0.01, 10)
+        else:
+            new_value = self.levels_borders[edit_parameter][self.levels_edit_band] + amount
+            self.levels_borders[edit_parameter][self.levels_edit_band] = restrict(new_value, 0, 1)
+        self.update_levels(edit_parameter)
+
     def mouse_circle_tracking(self):
         self.mouse_buffer *= .9
         mouse_speed = np.linalg.norm(self.mouse_buffer) ** .6
@@ -2040,55 +2090,6 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.pressed_mouse == 3:
             self.pic_angle_future += (- dx + dy) / 15
             self.unschedule_pop_message(2)
-
-    def adjust_transform(self, amount, amount_xy):
-        if self.transform_mode == 1 and self.crop_borders_active:  # resizing
-            if self.crop_borders_active == 1:
-                button_rate = 1 + (self.pressed_mouse - 1) * 40
-                button_rate = (1 - (amount_xy[1] * 5 - amount_xy[0]) / 50000 * button_rate)
-                self.resize_xy = restrict(self.resize_xy * button_rate - amount / 1000, 0.1, 10)
-            elif self.crop_borders_active == 4:
-                button_rate_x = -amount_xy[0] / 10000
-                button_rate_y = amount_xy[1] / 10000
-                self.resize_x = restrict(self.resize_x * (1 - button_rate_x) - button_rate_x, 0.1, 10)
-                self.resize_y = restrict(self.resize_y * (1 - button_rate_y) - button_rate_y, 0.1, 10)
-
-        elif self.transform_mode == 2 and self.crop_borders_active:  # cropping
-            if self.crop_borders_active == 5:
-                self.pic_angle_future += (- amount_xy[0] + amount_xy[1]) / 15
-                self.unschedule_pop_message(2)
-                return
-            border_id = self.crop_borders_active - 1
-            crops = self.crop_borders
-            work_axis = border_id & 1
-            crop_amount = amount_xy[work_axis] / 10
-            actual_pic_size = Point((self.pic_screen_borders[2] - self.pic_screen_borders[0]) / self.pic_zoom,
-                                    (self.pic_screen_borders[3] - self.pic_screen_borders[1]) / self.pic_zoom)
-
-            crop_direction = 1 if border_id in {0, 3} else -1
-            opposite_border_id = border_id ^ 2
-            axis_speed = actual_pic_size[work_axis] / self.window_size[work_axis] + 5
-            button_rate = 1 + (self.pressed_mouse - 1) * axis_speed * 5
-            crop_change_amount = crop_amount * button_rate * crop_direction
-            crops[border_id] += crop_change_amount
-            if self.pic_screen_borders[2 + work_axis] - self.pic_screen_borders[0 + work_axis] < 5 * self.pic_zoom:
-                crops[opposite_border_id] -= crop_change_amount + .3 * self.pic_zoom
-
-    def adjust_levels(self, amount):
-        edit_parameter = self.levels_edit_parameter - 1
-        if edit_parameter > 2 and self.levels_edit_band < 4:
-            amount = - amount
-        if self.levels_edit_band == 4:
-            self.levels_borders[5][edit_parameter] = restrict(
-                self.levels_borders[5][edit_parameter] * (1 - amount), 0.01, 10)
-            self.update_levels(5)
-        elif edit_parameter == 2:
-            self.levels_borders[edit_parameter][self.levels_edit_band] = restrict(
-                self.levels_borders[edit_parameter][self.levels_edit_band] * (1 + amount), 0.01, 10)
-        else:
-            new_value = self.levels_borders[edit_parameter][self.levels_edit_band] + amount
-            self.levels_borders[edit_parameter][self.levels_edit_band] = restrict(new_value, 0, 1)
-        self.update_levels(edit_parameter)
 
     def mouse_drag_event(self, x, y, dx, dy):
         # self.mouse_buffer += [dx, dy]
