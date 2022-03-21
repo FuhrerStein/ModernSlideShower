@@ -799,7 +799,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.start_with_random_image = True
 
         self.window_size = self.wnd.size
-
+ 
         if self.image_count == 0:
             self.central_message_showing = 2
             self.switch_interface_mode(INTERFACE_MODE_MANDELBROT)
@@ -2037,14 +2037,9 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.mouse_tin_tracking(dx, dy)
 
         elif self.interface_mode == INTERFACE_MODE_MENU:
-            # self.mouse_buffer[1] -= dy * .5
-            # # self.mouse_buffer[1] = restrict(self.mouse_buffer[1], self.menu_top, self.menu_bottom)
-            # self.mouse_buffer[1] -= self.menu_top
-            # self.mouse_buffer[1] %= self.menu_bottom - self.menu_top
-            # self.mouse_buffer[1] += self.menu_top
-
-            self.mouse_buffer[1] = restrict(self.mouse_buffer[1] - dy * .5, self.menu_top, self.menu_bottom)
-            self.imgui.mouse_position_event(20, self.mouse_buffer[1], 0, 0)
+            if self.menu_bottom > 1:
+                self.mouse_buffer[1] = restrict(self.mouse_buffer[1], self.menu_top, self.menu_bottom)
+                self.imgui.mouse_position_event(20, self.mouse_buffer[1], 0, 0)
 
         elif self.interface_mode == INTERFACE_MODE_SETTINGS:
             if abs(self.mouse_buffer[1]) > 150:
@@ -2093,26 +2088,32 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def mouse_drag_event(self, x, y, dx, dy):
         # self.mouse_buffer += [dx, dy]
+        self.mouse_buffer[1] += dy * .5
         amount = (dy * 5 - dx) / 1500
         self.right_click_start -= (abs(dx) + abs(dy)) * .01
         if self.interface_mode == INTERFACE_MODE_GENERAL:            
             if self.pressed_mouse == 1:
-                if dy > 3:
+                if self.mouse_buffer[1] > 50:
                     self.show_image_info += 1
-                elif dy < -3:
+                    self.mouse_buffer[1] = 0
+                elif self.mouse_buffer[1] < -50:
                     self.show_image_info -= 1
+                    self.mouse_buffer[1] = 0
                 if self.show_image_info == 3:
-                    self.switch_interface_mode(INTERFACE_MODE_MENU)
+                    # self.switch_interface_mode(INTERFACE_MODE_MENU, False)
+                    self.interface_mode = INTERFACE_MODE_MENU
+                    self.imgui.mouse_position_event(20, 5, 0, 0)
                 self.show_image_info = restrict(self.show_image_info, 0, 2)
             else:
                 self.visual_move(dx, dy)
         elif self.interface_mode == INTERFACE_MODE_MENU:
             # self.mouse_position_event(x, y, dx, dy)
-            self.mouse_buffer[1] += dy * .5
-            self.mouse_buffer[1] = restrict(self.mouse_buffer[1], self.menu_top, self.menu_bottom)
             # self.imgui.mouse_position_event(20, self.mouse_buffer[1], 0, 0)
+            # self.mouse_buffer[1] += dy * .5
+            self.mouse_buffer[1] = restrict(self.mouse_buffer[1], self.menu_top, self.menu_bottom)
             self.imgui.mouse_position_event(20, self.mouse_buffer[1], 0, 0)
-            self.imgui.mouse_press_event(20, self.mouse_buffer[1], 1)
+            if self.menu_bottom > 1:
+                self.imgui.mouse_press_event(20, self.mouse_buffer[1], 1)
 
         elif self.interface_mode == INTERFACE_MODE_SETTINGS:
             # if self.setting_active == 0: return
@@ -2211,6 +2212,8 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.interface_mode == INTERFACE_MODE_MENU and button == 1:
             # self.imgui.mouse_press_event(20, self.mouse_buffer[1], button)
             self.imgui.mouse_release_event(20, self.mouse_buffer[1], button)
+            self.menu_bottom = -1
+            # self.switch_interface_mode(INTERFACE_MODE_GENERAL)
             # self.menu_clicked_last_time = self.timer.time
 
         if self.interface_mode == INTERFACE_MODE_SETTINGS:
@@ -2741,6 +2744,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def imgui_menu(self):
         menu_clicked = False
+        self.imgui_style.alpha = .9
         self.next_message_top += 10
         self.menu_top = self.next_message_top
         imgui.set_next_window_position(10, self.next_message_top)
@@ -2763,13 +2767,17 @@ class ModernSlideShower(mglw.WindowConfig):
                     if clicked:
                         self.discrete_actions(item[4])
                         menu_clicked = True
-
+            
+            if self.menu_bottom <  0:
+                menu_clicked = True
             self.next_message_top += imgui.get_window_height()
             self.menu_bottom = self.next_message_top
             imgui.end_popup()
 
         if menu_clicked:
             if self.interface_mode == INTERFACE_MODE_MENU:
+                self.menu_bottom = 1
+                self.show_image_info = 0
                 self.switch_interface_mode(INTERFACE_MODE_GENERAL)
 
     def imgui_central_message(self):
