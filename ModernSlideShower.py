@@ -783,7 +783,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.mandel_stat_buffer = self.ctx.buffer(reserve=(32 * 64 * 4))
         self.mandel_stat_buffer.bind_to_storage_buffer(4)
-        self.histo_texture = self.ctx.texture((256, 5), 4)
+        self.histo_texture = self.ctx.texture((256, 5), 1, dtype='u4')
         self.histo_texture.bind_to_image(7, read=True, write=True)
         self.histo_texture_empty = self.ctx.buffer(reserve=(256 * 5 * 4))
         self.histogram_array = np.zeros((5, 256), dtype=np.float32)
@@ -2169,16 +2169,18 @@ class ModernSlideShower(mglw.WindowConfig):
             # self.imgui.mouse_position_event(20, self.mouse_buffer[1] / 5, None, None)
             self.imgui.mouse_press_event(20, self.mouse_buffer[1], button)
             pass
-        elif self.interface_mode == INTERFACE_MODE_GENERAL and button == 1:
-            self.left_click_start = self.timer.time
-            self.show_image_info = 1
-
-        if self.interface_mode == INTERFACE_MODE_LEVELS and self.levels_enabled:
+        elif self.interface_mode == INTERFACE_MODE_GENERAL:
+            if button == 1:
+                self.left_click_start = self.timer.time
+                self.show_image_info = 1
+            if self.pressed_mouse == 3:
+                self.random_image()
+        elif self.interface_mode == INTERFACE_MODE_LEVELS and self.levels_enabled:
             if self.levels_edit_band == 4:
                 self.levels_edit_parameter = (self.levels_edit_group * 2 + self.pressed_mouse) % 5
             elif self.pressed_mouse < 4:
                 self.levels_edit_parameter = (self.levels_edit_group * 3 + self.pressed_mouse) % 6
-        if self.interface_mode == INTERFACE_MODE_TRANSFORM:
+        elif self.interface_mode == INTERFACE_MODE_TRANSFORM:
             if self.transform_mode == 1:
                 if self.pressed_mouse == 1:
                     self.crop_borders_active = 1
@@ -2190,8 +2192,6 @@ class ModernSlideShower(mglw.WindowConfig):
                 if self.pressed_mouse == 3:
                     self.crop_borders_active = 5
 
-        if self.pressed_mouse == 3:
-            self.random_image()
         if self.pressed_mouse == 6:
             self.autoflip_toggle()
 
@@ -2503,7 +2503,8 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.schedule_pop_message(21, 8000, many_times='')
 
     def read_and_clear_histo(self):
-        hg = np.frombuffer(self.histo_texture.read(), dtype=np.uint32).reshape(5, 256).copy()
+        hg_raw = self.histo_texture.read()
+        hg = np.frombuffer(hg_raw, dtype=np.uint32).reshape(5, 256).copy()
         hg[4] = hg[1] + hg[2] + hg[3]
         self.histogram_array = hg.astype(np.float32)
         self.histo_texture.write(self.histo_texture_empty)
@@ -2585,7 +2586,8 @@ class ModernSlideShower(mglw.WindowConfig):
             self.picture_vao.render(self.gl_program_mandel[self.mandel_id], vertices=1)
         else:
             self.update_position()
-            self.read_and_clear_histo()
+            if self.interface_mode == INTERFACE_MODE_LEVELS:
+                self.read_and_clear_histo()
             if self.transition_stage < 1:
                 if type(self.current_texture_old) is moderngl.texture.Texture:
                     self.current_texture_old.use(5)
