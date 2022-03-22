@@ -23,6 +23,7 @@ import collections
 import pyglet
 import json
 from mpmath import mp
+from natsort import natsorted
 
 # from scipy.interpolate import BSpline
 
@@ -943,7 +944,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.dir_list.append(root)
                 self.dir_to_file.append([first_file, file_count])
                 self.dir_count += 1
-                self.file_list += sorted(this_dir_file_list)
+                self.file_list += natsorted(this_dir_file_list)
 
     def scan_file(self, filename):
         if filename.lower().endswith(ALL_FILE_TYPES):
