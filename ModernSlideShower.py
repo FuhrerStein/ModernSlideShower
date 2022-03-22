@@ -925,13 +925,14 @@ class ModernSlideShower(mglw.WindowConfig):
         print("Searching for images in", dirname)
         for root, dirs, files in os.walk(dirname):
             file_count = 0
+            this_dir_file_list = []
             first_file = self.image_count
             for f in files:
                 if f.lower().endswith(ALL_FILE_TYPES):
                     img_path = os.path.join(root, f)
                     self.image_count += 1
                     file_count += 1
-                    self.file_list.append(f)
+                    this_dir_file_list.append(f)
                     self.file_to_dir.append(self.dir_count)
                     if not self.image_count % 1000:
                         print(self.image_count, "images found", end="\r")
@@ -942,6 +943,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.dir_list.append(root)
                 self.dir_to_file.append([first_file, file_count])
                 self.dir_count += 1
+                self.file_list += sorted(this_dir_file_list)
 
     def scan_file(self, filename):
         if filename.lower().endswith(ALL_FILE_TYPES):
