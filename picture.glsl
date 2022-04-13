@@ -1,7 +1,7 @@
 #version 430
 
 
-    #if defined PICTURE_VETREX
+    #if defined PICTURE_VERTEX
 layout(binding=5) uniform sampler2D image_texture;
 uniform vec2 displacement;
 uniform vec2 wnd_size;
@@ -152,7 +152,6 @@ uniform bool count_histograms;
 uniform vec2 transition_center;
 uniform float zoom_scale;
 uniform float inter_blur;
-uniform float spd;
 uniform float pixel_size;
 uniform vec4 crop;
 uniform vec4 lvl_i_min;
@@ -197,6 +196,10 @@ double get_gray(dvec4 pixel_color){
 
 // unclamped average between smoothstep and smootherstep
 dvec2 smootherstep_ease(dvec2 x) {
+    return x * x * (x * (x * (x * 6 - 15) + 8) + 3) / 2;
+}
+
+vec2 smootherstep_ease(vec2 x) {
     return x * x * (x * (x * (x * 6 - 15) + 8) + 3) / 2;
 }
 
@@ -359,7 +362,7 @@ void main() {
 }
 
 
-#elif defined COMPARE_VETREX
+#elif defined COMPARE_VERTEX
 
 void main() {
 }
@@ -502,12 +505,13 @@ void main() {
 
 #elif defined BROWSE_GEOMETRY
 
-layout(binding=8) uniform sampler2D thumb_textures;
+//layout(binding=8) uniform sampler2D thumb_textures;
 layout (points) in;
 layout (line_strip, max_vertices = 256) out;
 uniform vec2 wnd_size;
 uniform int row;
 uniform int row_elements;
+uniform float thumb_period;
 
 in global_data{
 vec2 point_coords[4];
@@ -521,37 +525,43 @@ float max_edge;
 float tran_blur;
 } in_data[];
 
-out vec4 crop_borders;
-out flat int work_axis;
-out float border_color;
+//out vec4 crop_borders;
 const float point_rel_coords_x[8] = {  0,   0, -.02, 1.02,   1,   1, -.02, 1.02};
 const float point_rel_coords_y[8] = {-.02, 1.02,   0,   0, -.02, 1.02,   1,   1};
+const int line_shift[8] = {-1,  0,  0,   -1,  1,  0,  0,  1};
 vec4 borders_rel;
+vec2 one_pix_size = 1 / wnd_size;
 out float frame_opacity;
+bool frame_selected = false;
 
-void emit_point(int point_id){
+void emit_point(int point_id, float shift_x, float shift_y){
     float x, y;
-    x = mix(borders_rel.x, borders_rel.z, point_rel_coords_x[point_id]);
-    y = mix(borders_rel.y, borders_rel.w, point_rel_coords_y[point_id]);
+    x = mix(borders_rel.x, borders_rel.z, point_rel_coords_x[point_id]) + shift_x;
+    y = mix(borders_rel.y, borders_rel.w, point_rel_coords_y[point_id]) + shift_y;
     gl_Position = vec4(x, y, 0.0, 1.0);
     EmitVertex();
 }
 
-
 void emit_line(int line_id){
-    emit_point(line_id);
-    emit_point(line_id + 1);
+    emit_point(line_id, one_pix_size.x * line_shift[line_id], one_pix_size.y * line_shift[line_id + 1]);
+    emit_point(line_id + 1, one_pix_size.x * line_shift[line_id], one_pix_size.y * line_shift[line_id + 1]);
     EndPrimitive();
 }
 
 void emit_square(vec2 center, float frame_size){
-    borders_rel = vec4(center.x - frame_size, center.y - frame_size, center.x + frame_size, center.y + frame_size);
-    borders_rel = borders_rel / wnd_size.xyxy * 2 - 1;
-    float size_opacity = 2 - 5 * frame_size / min(wnd_size.x, wnd_size.y);
-    size_opacity = smoothstep(0, 5, size_opacity);
-    float edge_opacity = min(min(center.x, wnd_size.x - center.x), min(center.y, wnd_size.y - center.y)) / frame_size - .66;
-    edge_opacity = smoothstep(0, 1, edge_opacity);
-    frame_opacity = size_opacity * edge_opacity;
+//    borders_rel = vec4(center.x - frame_size, center.y - frame_size, center.x + frame_size, center.y + frame_size);
+//    borders_rel = borders_rel / wnd_size.xyxy * 2 - 1;
+    borders_rel = vec4(center * 2 - frame_size, center * 2 + frame_size) / wnd_size.xyxy - 1;
+
+    float size_opacity = 2 - 2.5 * frame_size / min(wnd_size.x, wnd_size.y);
+    size_opacity = smoothstep(-1, 5, size_opacity);
+//    float edge_opacity = min(min(center.x, wnd_size.x - center.x), min(center.y, wnd_size.y - center.y)) / frame_size + 1;
+//    edge_opacity = smoothstep(-.3, .8, edge_opacity);
+//    frame_opacity = size_opacity * edge_opacity;
+    frame_opacity = size_opacity;
+    if ((borders_rel.x * borders_rel.z < 0) && (borders_rel.y * borders_rel.w < 0)){
+        frame_opacity  = 1;
+    }
 
     emit_line(0);
     emit_line(2);
@@ -560,27 +570,108 @@ void emit_square(vec2 center, float frame_size){
 }
 
 void main() {
-    crop_borders = in_data[0].crop_borders;
-    vec2 pic_center = vec2(crop_borders.x + crop_borders.z, crop_borders.y + crop_borders.w) / 2;
-    float frame_size = max(crop_borders.z - crop_borders.x, crop_borders.w - crop_borders.y) / 2;
+    vec4 crop_borders = in_data[0].crop_borders;
+    vec2 pic_center = (crop_borders.xy + crop_borders.zw) / 2;
+    float frame_size = max(crop_borders.z - crop_borders.x, crop_borders.w - crop_borders.y);
     for (int i = - row_elements; i <= row_elements; i++) {
-            emit_square(pic_center + vec2(frame_size * 2.25 * i, frame_size * 2.25 * row), frame_size);
+            emit_square(pic_center + vec2(frame_size * thumb_period * i, -frame_size * thumb_period * row), frame_size);
+
         }
 }
 
     #elif defined BROWSE_FRAGMENT
 
-uniform vec2 wnd_size;
-in float border_color;
 in float frame_opacity;
-in flat int work_axis;
-in vec4 crop_borders;
-
 out vec4 fragColor;
 
 void main() {
-    vec2 invert_size = (crop_borders.zw - crop_borders.xy) / 15;
     fragColor = vec4(vec3(.8), frame_opacity);
+}
+
+
+#elif defined BROWSE_PIC_GEOMETRY
+
+layout (points) in;
+layout (triangle_strip, max_vertices = 256) out;
+uniform vec2 wnd_size;
+uniform int row_elements;
+uniform int row;
+uniform int thumbs_count;
+uniform int thumb_offset;
+uniform int thumbs_backward;
+uniform int thumbs_forward;
+uniform float thumb_period;
+
+
+in global_data{
+vec2 point_coords[4];
+vec2 uv_coords[4];
+vec4 crop_borders;
+
+float translucency;
+float f_show_amount;
+float min_edge;
+float max_edge;
+float tran_blur;
+} in_data[];
+
+out vec2 uv0;
+out vec4 crop_borders;
+out float frame_opacity;
+flat out int row_element;
+
+vec4 borders_rel;
+
+void emit_point(int point_id){
+    float x, y;
+    x = mix(borders_rel.x, borders_rel.z, in_data[0].uv_coords[point_id].x);
+    y = mix(borders_rel.y, borders_rel.w, in_data[0].uv_coords[point_id].y);
+    gl_Position = vec4(x, y, 0.5, 1.0);
+    uv0 = in_data[0].uv_coords[point_id];
+    EmitVertex();
+}
+
+void emit_square(vec2 center, float frame_size){
+    borders_rel = vec4(center * 2 - frame_size, center * 2 + frame_size) / wnd_size.xyxy - 1;
+    frame_opacity = smoothstep(-0, 1, 2 - 2.5 * frame_size / min(wnd_size.x, wnd_size.y));
+    if ((borders_rel.x * borders_rel.z < 0) && (borders_rel.y * borders_rel.w < 0)){
+        frame_opacity = 1;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        emit_point(i);
+    }
+    EndPrimitive();
+}
+
+
+void main() {
+    crop_borders = in_data[0].crop_borders;
+    vec2 pic_center = (crop_borders.xy + crop_borders.zw) / 2;
+    float frame_size = max(crop_borders.z - crop_borders.x, crop_borders.w - crop_borders.y);
+    for (int i = - row_elements; i <= row_elements; i++) {
+            row_element = i + row * (row_elements * 2 + 1);
+            if ((row_element >= -thumbs_backward) && (row_element < thumbs_forward)){
+                row_element = (row_element + thumb_offset + thumbs_count) % thumbs_count;
+                emit_square(pic_center + vec2(frame_size * thumb_period * i, -frame_size * thumb_period * row), frame_size);
+            }
+        }
+}
+
+    #elif defined BROWSE_PIC_FRAGMENT
+
+layout(binding=8) uniform sampler2DArray texture_thumb;
+out vec4 fragColor;
+
+in vec2 uv0;
+in float frame_opacity;
+flat in int row_element;
+
+vec4 pixel_color;
+
+void main() {
+    pixel_color = texture(texture_thumb, vec3(uv0, row_element));
+    fragColor = vec4(pixel_color.xyz, frame_opacity);
 }
 
 

@@ -1,32 +1,42 @@
 -- Planned functionality and changes --
 
-todo: show compression and decompression progress when saving/loading lists
-todo: program icon
-todo: filelist position indicator
-todo: explain about jpegtran in case it was not found
-todo: interface to adjust curves
-todo: zooming slideshow mode
-todo: filtering image with glsl code
-todo: support for large images by splitting them into smaller subtextures
-todo: seam resizing
-todo: set settings change speeds in setting settings
-todo: add 3-4 user-editable parameters to mandelbrot_mode
-todo: add other julia sets in mandelbrot_mode
-todo: tutorial mode to teach user how to use program
-todo: avoid swapping textures every frame
-todo: in case of deep unzoom, show thumbnails
-todo: "repeat last levels" single-key operation
-todo: rewrite help for other modes: levels, transform, mandelbrot
-todo: transition settings for next image, next folder, and first image in list
-todo: caching for mandelbrot texels
-todo: do not switch immadiately at edges in compare mode
+show compression and decompression progress when saving/loading lists
+program icon
+filelist position indicator
+explain about jpegtran in case it was not found
+interface to adjust curves
+filtering image with glsl code
+support for large images by splitting them into smaller subtextures
+seam resizing with glsl
+set settings change speeds in setting settings
+add 3-4 user-editable parameters to mandelbrot_mode
+add other julia sets in mandelbrot_mode
+tutorial mode to teach user how to use program
+avoid swapping textures every frame
+"repeat last levels" single-key operation
+rewrite help for other modes: levels, transform, mandelbrot
+transition settings for next image, next folder, and first image in list
+caching for mandelbrot texels
+do not switch immadiately at edges in compare mode
+in thumbs mode show which photos are accepted and rejected
+in thumbs mode limit horizontal movement
+in thumbs mode minimal stack to be 3 thumbs in width
+animate thumbnails rearangement when unzooming
+
+andvanced ultra-zoom algorithm
+
+Scroll mode. Show all images in one scroll with equal width and equal zoom
+Zoom mode. Switch to next image with extreme zoom on previous. Also in slideshow.
 
 read-only mode
 levels: contrast regulation
-
+Switch all db to pandas
 
 -- Implemented functionality and changes --
 
+in case of deep unzoom, show thumbnails
+load preview thumbnails in separate process
+choose another image by zooming into its thumbnail
 add accept/reject selector in compare mode
 eliminate gesture mode
 exit program if all images are moved away
