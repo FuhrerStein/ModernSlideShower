@@ -6,12 +6,13 @@ import moderngl_window as mglw
 import moderngl_window.context.base
 import moderngl_window.context.pyglet.keys
 import moderngl_window.meta
-import moderngl_window.opengl.vao
+
+# import moderngl_window.opengl.vao
 import moderngl_window.timers.clock
+from moderngl_window.opengl import program, vao
+from moderngl_window.integrations.imgui import ModernglWindowRenderer
 import io
 import rawpy
-from moderngl_window.opengl import program
-from moderngl_window.integrations.imgui import ModernglWindowRenderer
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from scipy.ndimage import gaussian_filter
 import numpy as np
@@ -566,7 +567,7 @@ def thumb_loader_process(in_queue: multiprocessing.Queue, out_queue: multiproces
             return
         pic_data = load_thumb(task_data[1])
         try:
-            out_queue.put((task_data, pic_data), timeout=3)
+            out_queue.put((task_data, pic_data), timeout=2)
         except:
             pass
 
@@ -626,6 +627,7 @@ class ModernSlideShower(mglw.WindowConfig):
     thumbs_for_image_requested = -1
 
     random_folder_mode = False
+    exclude_plus_minus = False
 
     # unseen_images = set()
     seen_images = np.zeros(0)
@@ -639,7 +641,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
     common_path = ""
     im_object = Image
-    exlcude_plus_minus = False
 
     pic_pos_current = mp.mpc()
     pic_pos_future = mp.mpc()
@@ -678,7 +679,12 @@ class ModernSlideShower(mglw.WindowConfig):
     # image_texture_hd = [moderngl.Texture] * 3
     current_texture = moderngl.Texture
     current_texture_old = moderngl.Texture
-    curve_texture = moderngl.Texture
+    # curve_texture = moderngl.Texture
+    histo_texture = moderngl.texture
+    histo_texture_empty = moderngl.buffer
+    histogram_array = np.empty
+
+
     max_keyboard_flip_speed = .3
     mouse_move_atangent = 0.
     mouse_move_atangent_delta = 0.
@@ -762,9 +768,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
     pop_db = []
 
-    histogram_array = np.empty
-    histo_texture = moderngl.texture
-    histo_texture_empty = moderngl.buffer
 
     levels_borders = [[0.] * 4, [1.] * 4, [1.] * 4, [0.] * 4, [1.] * 4, [1.] * 4]
     levels_borders_previous = []
@@ -1029,7 +1032,7 @@ class ModernSlideShower(mglw.WindowConfig):
             file_count = 0
             this_dir_file_list = []
             first_file = self.image_count
-            if self.exlcude_plus_minus:
+            if self.exclude_plus_minus:
                 if "\\++" in root or "\\--" in root:
                     continue
             for f in files:
@@ -1045,10 +1048,6 @@ class ModernSlideShower(mglw.WindowConfig):
                         print(self.image_count, "images found", end="\r")
                         self.render()
                         report_step = adjust_step()
-                        # if self.image_count > 15000:
-                        #     report_step = 1000
-                        # elif self.image_count > 5000:
-                        #     report_step = 500
                     if look_for_file:
                         if img_path == look_for_file:
                             self.new_image_index = self.image_count - 1
@@ -1161,9 +1160,9 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def get_file_path(self, index=None):
         if index is None:
-            index = self.new_image_index
-        if index >= self.image_count:
-            index = self.image_count - 1
+            index = min(self.new_image_index, self.image_count - 1)
+        # if index >= self.image_count:
+        #     index = self.image_count - 1
         if self.image_count == 0:
             dir_index = - 1
         else:
@@ -1173,7 +1172,11 @@ class ModernSlideShower(mglw.WindowConfig):
         dir_name = self.dir_list[dir_index]
         file_name = self.file_list[index]
         img_path = os.path.join(dir_name, file_name)
-        return img_path
+        if os.path.isfile(img_path):
+            return img_path
+        else:
+            return EMPTY_IMAGE_LIST
+
 
     def save_current_settings(self):
         with open("settings.json", 'w') as f:
@@ -1322,7 +1325,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if start_number == self.new_image_index:
                 self.file_list[self.new_image_index] = EMPTY_IMAGE_LIST
                 break
-            if os.path.isfile(self.get_file_path()):
+            if os.path.exists(self.get_file_path()):
                 break
         self.load_image()
 
@@ -2134,14 +2137,13 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
     def mouse_position_event(self, x, y, dx, dy):
-
         self.mouse_buffer += [dx, dy]
 
         if self.interface_mode == INTERFACE_MODE_GENERAL:
             if self.small_zoom:
                 self.move_image(dx, -dy, accelerate=.02)
                 return
-            if self.big_zoom:
+            if self.big_zoom and self.switch_mode != SWITCH_MODE_COMPARE:
                 self.move_image(dx, -dy)
                 return
 
@@ -2211,6 +2213,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.right_click_start -= (abs(dx) + abs(dy)) * .01
         if self.interface_mode == INTERFACE_MODE_GENERAL:            
             if self.pressed_mouse == 1:
+                if self.switch_mode == SWITCH_MODE_COMPARE:
+                    self.move_image(dx, -dy)
                 if self.mouse_buffer[1] > 50:
                     self.show_image_info += 1
                     self.mouse_buffer[1] = 0
@@ -3105,7 +3109,9 @@ class ModernSlideShower(mglw.WindowConfig):
             "File   name: " + file_name,
             "Folder name: " + folder_name,
             folder_path_text,
-            "Folder #: " + f"{self.dir_index + 1:d} of {self.dir_count:d}",
+            f"Folder #: {self.dir_index + 1:d} of {self.dir_count:d}",
+            f"Image in folder: {self.index_in_folder:d} of {self.images_in_folder:d}",
+            f"Image in all list: {self.image_index + 1:d} of {self.image_count:d}",
         ]
         self.imgui_show_info_window(info_text, "Path info")
 
@@ -3114,9 +3120,7 @@ class ModernSlideShower(mglw.WindowConfig):
             info_text = [
                     "File size: " + format_bytes(self.current_image_file_size),
                     f"Image size: {self.image_original_size.x} x {self.image_original_size.y}",
-                    "Image size: " + f"{im_mp:.2f} megapixels",
-                    "Image # (current folder): " + f"{self.index_in_folder:d} of {self.images_in_folder:d}",
-                    "Image # (all list): " + f"{self.image_index + 1:d} of {self.image_count:d}",
+                    f"Image size: {im_mp:.2f} megapixels",
                     f"Current zoom: {self.pic_zoom * 100:.1f}%",
                     f"Visual rotation angle: {self.pic_angle:.2f}°",
             ]
@@ -3396,17 +3400,21 @@ class ModernSlideShower(mglw.WindowConfig):
 
 def main_loop() -> None:
     # mglw.setup_basic_logging(20)  # logging.INFO
-    start_fullscreen = True
-    if "-f" in sys.argv:
-        start_fullscreen = not start_fullscreen
-    if "-exclude_plus_minus" in sys.argv:
-        exlcude_plus_minus = True
-    else:
-        exlcude_plus_minus = False
-    if "-random_folder_mode" in sys.argv:
-        random_folder_mode = True
-    else:
-        random_folder_mode = False
+    # start_fullscreen = True
+    # if "-f" in sys.argv:
+    #     start_fullscreen = not start_fullscreen
+
+    start_fullscreen = False if "-f" in sys.argv else True
+    exclude_plus_minus = "-exclude_plus_minus" in sys.argv
+    random_folder_mode = "-random_folder_mode" in sys.argv
+    # if "-exclude_plus_minus" in sys.argv:
+    #     exclude_plus_minus = True
+    # else:
+    #     exclude_plus_minus = False
+    # if "-random_folder_mode" in sys.argv:
+    #     random_folder_mode = True
+    # else:
+    #     random_folder_mode = False
 
     enable_vsync = True
     # window = mglw.get_local_window_cls('pyglet')(fullscreen=start_fullscreen, vsync=enable_vsync)
@@ -3421,7 +3429,7 @@ def main_loop() -> None:
     mglw.activate_context(window=window)
     timer = mglw.timers.clock.Timer()
     window.config = ModernSlideShower(ctx=window.ctx, wnd=window, timer=timer)
-    window.config.exlcude_plus_minus = exlcude_plus_minus
+    window.config.exclude_plus_minus = exclude_plus_minus
     window.config.random_folder_mode = random_folder_mode
 
     timer.start()

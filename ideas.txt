@@ -1,0 +1,17 @@
+scipy.ndimage.gaussian_filter can be roughly changed for
+
+kernel = np.array([1.0,2.0,1.0]) # Here you would insert your actual kernel of any size
+kernel /= kernel.sum()
+a = np.apply_along_axis(lambda x: np.convolve(x, kernel, mode='same'), 0, a)
+a = np.apply_along_axis(lambda x: np.convolve(x, kernel, mode='same'), 1, a)
+
+
+
+---------------
+
+
+
+
+
+
+
