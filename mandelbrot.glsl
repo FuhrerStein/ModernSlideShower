@@ -1,4 +1,4 @@
-#version 430
+#version 420
 
 #define definition 0
 
@@ -287,10 +287,14 @@ dvec2 vec_sqr_simple_5(dvec2 a){
 #define prezoom 4e-3
 
 //layout(binding=8, r32ui) uniform uimage2D histogram_texture;
-layout(std430, binding = 4) buffer layoutName
-{
-    uint data_SSBO[2048];
-};
+//layout(std430, binding = 4) buffer layoutName
+//{
+//    uint data_SSBO[2048];
+//};
+
+//uniform sampler2D mandel_stat_texture;
+//layout(binding=4, r32ui) uniform uimage2D mandel_stat_texture;
+layout(binding=4, r32ui) uniform uimage2D mandel_stat_texture;
 
 uniform float invert_zoom;
 uniform float complexity;
@@ -375,8 +379,10 @@ void main() {
     ivec2 n_was_bigger = ivec2(0, step(n, complexity - 1));
 //    n_was_bigger = ivec2(0, step(n + final_step * 0.5, complexity));
     ivec2 cluster_coord = ivec2((gl_FragCoord.xy / half_wnd_size / 2 + n_was_bigger) * 32);
-    uint cluster_coord_flat = int(cluster_coord.y * 32 + cluster_coord.x);
-    atomicAdd(data_SSBO[cluster_coord_flat], 1u);
+    uint cluster_coord_flat = uint(cluster_coord.y * 32 + cluster_coord.x);
+//    atomicAdd(data_SSBO[cluster_coord_flat], 1u);
+    imageAtomicAdd(mandel_stat_texture, cluster_coord, 1u);
+
 
     float comp_float = float(complexity);
     a1 = smoothstep(0, 40, pre_final_step * (20 - pre_final_step));
