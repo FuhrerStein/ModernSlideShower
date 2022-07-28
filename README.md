@@ -1,5 +1,5 @@
 # ModernSlideShower
-Image viewer with smooth image mothion and easy navigation
+Image viewer with smooth image motion and easy navigation
 
 [Intro video](https://www.youtube.com/watch?v=kGz4jEd-cZQ)
 
