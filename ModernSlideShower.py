@@ -486,13 +486,23 @@ def restrict(val, min_val, max_val):
 
 
 def split_complex(in_value):
-    # split_constant = 67108865  # 2 ^ 26 + 1
-    # split_constant = 1
     out_real, out_imaginary = [], []
     current_value = in_value
     for _ in range(4):
         with mp.workprec(52):
-            t = current_value  # * split_constant
+            t = current_value
+            c_hi = t - (t - current_value)
+            out_real.append(float(c_hi.real))
+            out_imaginary.append(float(c_hi.imag))
+        current_value -= c_hi
+    return out_real, out_imaginary
+
+def split_complex_32(in_value):
+    out_real, out_imaginary = [], []
+    current_value = in_value
+    for _ in range(4):
+        with mp.workprec(26):
+            t = current_value
             c_hi = t - (t - current_value)
             out_real.append(float(c_hi.real))
             out_imaginary.append(float(c_hi.imag))
@@ -500,22 +510,30 @@ def split_complex(in_value):
     return out_real, out_imaginary
 
 
-def format_bytes(size):
-    # 2**10 = 1024
-    power = 2 ** 10
+# def format_bytes(size):
+#     power = 2 ** 10 # 2**10 = 1024
+#     n = 0
+#     power_labels = {0: 'B', 1: ' KB', 2: ' MB', 3: ' GB', 4: ' TB'}
+#     f_size = size
+#     while f_size > power * 10:
+#         f_size /= power
+#         n += 1
+#     ret = f'{f_size:,.0f}'.replace(",", " ") + f'{power_labels[n]}  ({size:,d} B)'.replace(",", " ")
+#     return ret
+
+def format_bytes_3(size):
+    power = 2 ** 10 # 2**10 = 1024
     n = 0
-    power_labels = {0: 'B', 1: ' KB', 2: ' MB', 3: ' GB', 4: ' TB'}
+    power_labels = {0: 'B', 1: 'KB', 2: 'MB', 3: 'GB', 4: 'TB'}
     f_size = size
-    while f_size > power * 10:
+    while f_size > power:
         f_size /= power
         n += 1
-    ret = f'{f_size:,.0f}'.replace(",", " ") + power_labels[n] + "  (" + f'{size:,d}'.replace(",", " ") + " B)"
-    return ret
-
+    digits = 3 - math.ceil(math.log10(f_size))
+    return f'{f_size:.{digits}f} {power_labels[n]}  ({size:,d} B)'.replace(",", " ")
 
 def reorient_image(im):
     image_orientation = 0
-
     try:
         im_exif = im.getexif()
         image_orientation = im_exif.get(274, 0)
@@ -529,8 +547,7 @@ def reorient_image(im):
     return im
 
 
-def load_thumb(thumb_path_target):
-    # self.thumbs_list[thumb_offset] = thumb_path_target
+def load_image(path_target, do_thumb=False):
     def draw_dummy():
         im_object = Image.new("RGB", (256, 256), (20, 50, 80))
         d = ImageDraw.Draw(im_object)
@@ -538,22 +555,26 @@ def load_thumb(thumb_path_target):
         d.ellipse((100, 100, 255, 255))
         return im_object.tobytes()
 
-    if not os.path.isfile(thumb_path_target):
-        return draw_dummy()
-
     try:
-        with Image.open(thumb_path_target) as im_object:
+        if not do_thumb and any((path_target.lower().endswith(ex) for ex in RAW_FILE_TYPES)):
+            with open(path_target, 'rb', buffering=0) as f: # This is a workaround for opening non-latin file names
+                thumb = rawpy.imread(f).extract_thumb()
+            path_target = io.BytesIO(thumb.data)
+
+        with Image.open(path_target) as im_object:
             if im_object.mode == "RGB":
                 im_object = reorient_image(im_object)
             else:
                 im_object = reorient_image(im_object).convert(mode="RGB")
-            im_object.thumbnail((256, 256))
-            im_object = ImageOps.pad(im_object, (256, 256))
-            return im_object.tobytes()
-            # image_bytes = im_object.tobytes()
-            # self.thumb_textures.write(image_bytes, (0, 0, thumb_offset, 256, 256, 1))
-    except Exception:
-        return draw_dummy()
+            if do_thumb:
+                im_object.thumbnail((256, 256))
+                im_object = ImageOps.pad(im_object, (256, 256))
+            return im_object.tobytes(), Point(im_object.width, im_object.height)
+    except Exception as e:
+        if do_thumb:
+            return draw_dummy(), Point(0, 0)
+        else:
+            return None, e
 
 
 def thumb_loader_process(in_queue: multiprocessing.Queue, out_queue: multiprocessing.Queue):
@@ -565,9 +586,9 @@ def thumb_loader_process(in_queue: multiprocessing.Queue, out_queue: multiproces
             out_queue.close()
             in_queue.close()
             return
-        pic_data = load_thumb(task_data[1])
+        pic_data = load_image(task_data[1], do_thumb=True)
         try:
-            out_queue.put((task_data, pic_data), timeout=2)
+            out_queue.put((task_data, pic_data[0], pic_data[1]), timeout=2)
         except:
             pass
 
@@ -582,7 +603,7 @@ def init_thumb_loader():
 
 
 class ModernSlideShower(mglw.WindowConfig):
-    gl_version = (4, 3)
+    gl_version = (3, 3)
     title = "ModernSlideShower"
     aspect_ratio = None
     clear_color = (0.0, 0.0, 0.0, 0.0)
@@ -660,6 +681,7 @@ class ModernSlideShower(mglw.WindowConfig):
     gl_program_browse_squares = moderngl.program
     gl_program_browse_pic = moderngl.program
     gl_program_compare = moderngl.program
+    use_old_gl = False
     mandel_id = 0
     program_id = 0
     image_texture = moderngl.Texture
@@ -824,18 +846,35 @@ class ModernSlideShower(mglw.WindowConfig):
         Image.MAX_IMAGE_PIXELS = 10000 * 10000 * 3
         random.seed()
 
+
+        def sub_program(program_name: str):
+            return mglw.opengl.program.ShaderSource(program_name.upper(), program_name.lower(),
+                                                    picture_program_text).source
+
         def get_program_text(filename, program_text=""):
             if os.path.isfile(filename):
                 with open(filename, 'r') as fd:
                     program_text = fd.read()
             return program_text
 
-        picture_program_text = get_program_text('picture.glsl')
-        mandel_program_text = get_program_text('mandelbrot.glsl')
+        # test fot newer version compatibility
+        picture_program_text = """#version 420
+                                  #if defined PICTURE_VERTEX
+                                  void main() {}
+                                  #endif 
+                                  """
 
-        def sub_program(program_name: str):
-            return mglw.opengl.program.ShaderSource(program_name.upper(), program_name.lower(),
-                                                    picture_program_text).source
+        if "-old_gl" in sys.argv:
+            self.use_old_gl = True
+        else:
+            try:
+                self.ctx.program(vertex_shader=sub_program("picture_vertex"))
+            except moderngl.error.Error:
+                self.use_old_gl = True
+
+        prog_suffix = "_simple" if self.use_old_gl else ""
+        picture_program_text = get_program_text("picture" + prog_suffix + ".glsl")
+        mandel_program_text = get_program_text("mandelbrot" + prog_suffix + ".glsl")
 
         def compile_program(vertex_name, geometry_name, fragment_name):
             if geometry_name:
@@ -848,6 +887,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
         for _ in [0, 0]:
             self.gl_program_pic.append(compile_program("picture_vertex", "picture_geometry", "picture_fragment"))
+            self.gl_program_pic[-1]['texture_image'] = 5
 
         self.gl_program_crop = compile_program("picture_vertex", "crop_geometry", "crop_fragment")
         self.gl_program_browse_squares = compile_program("picture_vertex", "browse_geometry", "browse_fragment")
@@ -856,6 +896,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_round = compile_program("round_vertex", None, "round_fragment")
         self.gl_program_borders = self.ctx.program(vertex_shader=sub_program("picture_vertex"),
                                                    varyings=['crop_borders'])
+        self.gl_program_browse_pic['texture_thumb'] = 8
+        self.gl_program_borders['texture_image'] = 5
 
         p_d = moderngl_window.meta.ProgramDescription
         program_single = mglw.opengl.program.ProgramShaders.from_single
@@ -865,8 +907,11 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_mandel.append(program_single(p_d(defines={"definition": 1}), mandel_program_text).create())
         self.gl_program_mandel.append(program_single(p_d(defines={"definition": 2}), mandel_program_text).create())
 
-        self.mandel_stat_buffer = self.ctx.buffer(reserve=(32 * 64 * 4))
-        self.mandel_stat_buffer.bind_to_storage_buffer(4)
+        # self.mandel_stat_buffer = self.ctx.buffer(reserve=(32 * 64 * 4))
+        # self.mandel_stat_buffer.bind_to_storage_buffer(4)
+        self.mandel_stat_buffer = self.ctx.texture((32, 64), 1, dtype='u4')
+        self.mandel_stat_buffer.bind_to_image(4, read=True, write=True)
+        self.mandel_stat_empty = self.ctx.buffer(reserve=(32 * 64 * 4))
         self.histo_texture = self.ctx.texture((256, 5), 1, dtype='u4')
         self.histo_texture.bind_to_image(7, read=True, write=True)
         self.histo_texture_empty = self.ctx.buffer(reserve=(256 * 5 * 4))
@@ -889,6 +934,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.image_count == 0:
             self.central_message_showing = 2
             self.switch_interface_mode(INTERFACE_MODE_MANDELBROT)
+            self.init_end_time = self.timer.time
             return
 
         self.image_categories = np.zeros(self.image_count, dtype=int)
@@ -901,7 +947,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.load_image()
             self.unschedule_pop_message(7)
             self.unschedule_pop_message(8)
-        self.current_texture.use(5)
+        # self.current_texture.use(5)
         self.transition_stage = 1
         if "-tinder_mode" in sys.argv:
             self.switch_swithing_mode(SWITCH_MODE_TINDER)
@@ -1222,26 +1268,34 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.load_next_existing_image()
             return
 
-        try:
-            if sum([image_path.lower().endswith(ex) for ex in RAW_FILE_TYPES]):
-                f = open(image_path, 'rb', buffering=0)  # This is a workaround for opening cyrillic file names
-                thumb = rawpy.imread(f).extract_thumb()
-                img_to_read = io.BytesIO(thumb.data)
-            else:
-                img_to_read = image_path
-
-            with Image.open(img_to_read) as img_buffer:
-                if img_buffer.mode == "RGB":
-                    self.im_object = reorient_image(img_buffer)
-                else:
-                    self.im_object = reorient_image(img_buffer).convert(mode="RGB")
-                image_bytes = self.im_object.tobytes()
-                self.image_original_size = Point(self.im_object.width, self.im_object.height)
-                self.current_image_file_size = os.stat(image_path).st_size
-        except Exception as e:
-            print("Error loading ", self.get_file_path(), e)
+        image_load_result = load_image(image_path)
+        if image_load_result[0] is None:
+            print("Error loading ", self.get_file_path(), image_load_result[1])
             self.load_next_existing_image()
             return
+        image_bytes, self.image_original_size = image_load_result
+        self.current_image_file_size = os.stat(image_path).st_size
+
+        # try:
+        #     if sum([image_path.lower().endswith(ex) for ex in RAW_FILE_TYPES]):
+        #         f = open(image_path, 'rb', buffering=0)  # This is a workaround for opening non-latin file names
+        #         thumb = rawpy.imread(f).extract_thumb()
+        #         img_to_read = io.BytesIO(thumb.data)
+        #     else:
+        #         img_to_read = image_path
+        #
+        #     with Image.open(img_to_read) as img_buffer:
+        #         if img_buffer.mode == "RGB":
+        #             self.im_object = reorient_image(img_buffer)
+        #         else:
+        #             self.im_object = reorient_image(img_buffer).convert(mode="RGB")
+        #         image_bytes = self.im_object.tobytes()
+        #         self.image_original_size = Point(self.im_object.width, self.im_object.height)
+        #         self.current_image_file_size = os.stat(image_path).st_size
+        # except Exception as e:
+        #     print("Error loading ", self.get_file_path(), e)
+        #     self.load_next_existing_image()
+        #     return
 
         self.wnd.title = "ModernSlideShower: " + image_path
         if self.image_texture != self.current_texture:
@@ -1252,7 +1306,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.image_texture.repeat_x = False
         self.image_texture.repeat_y = False
         self.image_texture.build_mipmaps()
-        self.image_texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
+        # self.image_texture.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
         self.current_texture = self.image_texture
         self.previous_image_index = self.image_index
         self.image_index = self.new_image_index
@@ -1836,7 +1890,8 @@ class ModernSlideShower(mglw.WindowConfig):
     def update_position_mandel(self):
         mandel_complexity = abs(self.pic_angle) / 10 + self.mandel_auto_complexity
         mandel_complexity *= math.log2(self.pic_zoom) * .66 + 10
-        vec4_pos_x, vec4_pos_y = split_complex(-self.pic_pos_current / 1000)
+        complex_splitter = split_complex_32 if self.use_old_gl else split_complex
+        vec4_pos_x, vec4_pos_y = complex_splitter(-self.pic_pos_current / 1000)
         self.gl_program_mandel[self.mandel_id]['invert_zoom'] = MANDEL_PREZOOM / self.pic_zoom
         self.gl_program_mandel[self.mandel_id]['complexity'] = mandel_complexity
         self.gl_program_mandel[self.mandel_id]['mandel_x'] = tuple(vec4_pos_x)
@@ -2651,7 +2706,8 @@ class ModernSlideShower(mglw.WindowConfig):
         sum_tex = self.mandel_stat_buffer.read()
         hg = np.frombuffer(sum_tex, dtype=np.uint32).reshape(64, 32).copy(order='F')
         self.mandel_zones_hg = hg / (hg.max() + 1)
-        self.mandel_stat_buffer.clear()
+        self.mandel_stat_buffer.write(self.mandel_stat_empty)
+        # self.mandel_stat_buffer.clear()
 
         dark_zones, light_zones = np.vsplit(np.flipud(self.mandel_zones_hg), 2)
         light_zones_sum, dark_zones_sum = float(np.sum(light_zones)), float(np.sum(dark_zones))
@@ -2686,9 +2742,9 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.mandel_look_for_good_zones:
             self.mandel_move_to_good_zone(frame_time_chunk)
 
-        if self.pic_zoom > 4e28:
+        if self.pic_zoom > (4e10 if self.use_old_gl else 4e28):
             self.mandel_id = 0
-        elif self.pic_zoom > 2e13:
+        elif self.pic_zoom > (2e5 if self.use_old_gl else 2e13):
             self.mandel_id = 1
         else:
             self.mandel_id = 2
@@ -2795,7 +2851,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.key_flipping()
         if True in self.key_picture_movement:
             self.move_picture_with_key(frame_time_chunk)
-        if self.current_image_is_unseen:
+        if self.current_image_is_unseen and self.interface_mode != INTERFACE_MODE_MANDELBROT:
             self.unseen_image_routine()
         if self.pic_zoom < 1e-6:
             self.discrete_actions(Actions.CLOSE_PROGRAM)
@@ -3118,7 +3174,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.show_image_info == 2:
             im_mp = self.image_original_size.x * self.image_original_size.y / 1000000
             info_text = [
-                    "File size: " + format_bytes(self.current_image_file_size),
+                    "File size: " + format_bytes_3(self.current_image_file_size),
                     f"Image size: {self.image_original_size.x} x {self.image_original_size.y}",
                     f"Image size: {im_mp:.2f} megapixels",
                     f"Current zoom: {self.pic_zoom * 100:.1f}%",
@@ -3400,21 +3456,9 @@ class ModernSlideShower(mglw.WindowConfig):
 
 def main_loop() -> None:
     # mglw.setup_basic_logging(20)  # logging.INFO
-    # start_fullscreen = True
-    # if "-f" in sys.argv:
-    #     start_fullscreen = not start_fullscreen
-
     start_fullscreen = False if "-f" in sys.argv else True
     exclude_plus_minus = "-exclude_plus_minus" in sys.argv
     random_folder_mode = "-random_folder_mode" in sys.argv
-    # if "-exclude_plus_minus" in sys.argv:
-    #     exclude_plus_minus = True
-    # else:
-    #     exclude_plus_minus = False
-    # if "-random_folder_mode" in sys.argv:
-    #     random_folder_mode = True
-    # else:
-    #     random_folder_mode = False
 
     enable_vsync = True
     # window = mglw.get_local_window_cls('pyglet')(fullscreen=start_fullscreen, vsync=enable_vsync)

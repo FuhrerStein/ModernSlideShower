@@ -1,8 +1,10 @@
-#version 420
+#version 330
+//#version 420
 
 
     #if defined PICTURE_VERTEX
-layout(binding=5) uniform sampler2D texture_image;
+//layout(binding=5) uniform sampler2D image_texture;
+uniform sampler2D texture_image;
 uniform vec2 displacement;
 uniform vec2 wnd_size;
 uniform float zoom_scale;
@@ -144,8 +146,11 @@ void main() {
 
 
 
-layout(binding=5) uniform sampler2D texture_image;
-layout(binding=7, r32ui) uniform uimage2D histogram_texture;
+//uniform sampler2D texture4;
+uniform sampler2D texture_image;
+//uniform uimage2D histogram_texture;
+//layout(binding=5) uniform sampler2D texture_image;
+//layout(binding=7, r32ui) uniform uimage2D histogram_texture;
 
 uniform bool useCurves;
 uniform bool count_histograms;
@@ -182,7 +187,7 @@ uniform float hide_borders;
 vec2 pix_size = textureSize(texture_image, 0);
 float to_edge_a;
 vec2 to_edge;
-dvec4 pixel_color_hd;
+vec4 pixel_color_hd;
 vec4 pixel_color;
 
 
@@ -190,22 +195,22 @@ float get_gray(vec4 pixel_color){
     return pixel_color.r * Pr + pixel_color.g * Pg + pixel_color.b * Pb;
 }
 
-double get_gray(dvec4 pixel_color){
-    return pixel_color.r * Pr + pixel_color.g * Pg + pixel_color.b * Pb;
-}
+//float get_gray(vec4 pixel_color){
+//    return pixel_color.r * Pr + pixel_color.g * Pg + pixel_color.b * Pb;
+//}
 
 // unclamped average between smoothstep and smootherstep
-dvec2 smootherstep_ease(dvec2 x) {
-    return x * x * (x * (x * (x * 6 - 15) + 8) + 3) / 2;
-}
+//dvec2 smootherstep_ease(dvec2 x) {
+//    return x * x * (x * (x * (x * 6 - 15) + 8) + 3) / 2;
+//}
 
 vec2 smootherstep_ease(vec2 x) {
     return x * x * (x * (x * (x * 6 - 15) + 8) + 3) / 2;
 }
 
-double pixel_bands_mixed(vec4 four_pix, dvec2 in_pixel_coords)
+float pixel_bands_mixed(vec4 four_pix, vec2 in_pixel_coords)
 {
-    dvec2 half_pixel;
+    vec2 half_pixel;
     half_pixel = mix(four_pix.xw, four_pix.yz, in_pixel_coords.x);
     return mix(half_pixel.y, half_pixel.x, in_pixel_coords.y);
 }
@@ -242,13 +247,13 @@ vec4 change_saturation_soft(vec4 pix, float change) {
     return pix;
 }
 
-dvec4 pixel_color_mixed(sampler2D tex, vec2 uv, float pixel_size)
+vec4 pixel_color_mixed(sampler2D tex, vec2 uv, float pixel_size)
 {
-    dvec4 result_pixel;
+    vec4 result_pixel;
     vec2 image_size = textureSize(tex, 0);
-    dvec2 in_pixel_coords;
+    vec2 in_pixel_coords;
     in_pixel_coords = fract((uv) * image_size - .5 + inter_pixel_gap);
-    in_pixel_coords = fma(in_pixel_coords, dvec2(1. + pixel_size), dvec2(-pixel_size / 2));
+    in_pixel_coords = fma(in_pixel_coords, vec2(1. + pixel_size), vec2(-pixel_size / 2));
     in_pixel_coords = clamp(in_pixel_coords, 0, 1);
     in_pixel_coords = smootherstep_ease(in_pixel_coords);
 
@@ -264,6 +269,7 @@ void main() {
     float actual_blur = 1 + inter_blur * tran_blur;
     vec2 dx = dFdx(uv0) * actual_blur;
     vec2 dy = dFdy(uv0) * actual_blur;
+//    pixel_color = textureGrad(texture4, uv0, dx, dy);
     pixel_color = textureGrad(texture_image, uv0, dx, dy);
 
     if ((zoom_scale > 1) && (transparency == 0) && (process_type == 0))
@@ -309,10 +315,10 @@ void main() {
         pixel_color.a = get_gray(pixel_color);
         //        set_gray(pixel_color);
         ivec4 color_coord = ivec4(fma(pixel_color, vec4(255), vec4(.5)));
-        imageAtomicAdd(histogram_texture, ivec2(color_coord.a, 0), 1u);
-        imageAtomicAdd(histogram_texture, ivec2(color_coord.r, 1), 1u);
-        imageAtomicAdd(histogram_texture, ivec2(color_coord.g, 2), 1u);
-        imageAtomicAdd(histogram_texture, ivec2(color_coord.b, 3), 1u);
+//        imageAtomicAdd(histogram_texture, ivec2(color_coord.a, 0), 1u);
+//        imageAtomicAdd(histogram_texture, ivec2(color_coord.r, 1), 1u);
+//        imageAtomicAdd(histogram_texture, ivec2(color_coord.g, 2), 1u);
+//        imageAtomicAdd(histogram_texture, ivec2(color_coord.b, 3), 1u);
     }
 
     if ((zoom_scale > 1) && (transparency == 0) && (process_type == 0))
@@ -320,7 +326,7 @@ void main() {
         float past_layer_scale;
         float next_layer_scale;
         float layer_alpha;
-        dvec4 result_multiplyer = dvec4(1);
+        vec4 result_multiplyer = vec4(1);
         int current_layer = 0;
 
         do {
@@ -417,7 +423,7 @@ float tran_blur;
 } in_data[];
 
 out vec4 crop_borders;
-out flat int work_axis;
+flat out int work_axis;
 out float border_color;
 const float point_rel_coords_x[8] = {  0,   0, -.1, 1.1,   1,   1, -.1, 1.1};
 const float point_rel_coords_y[8] = {-.1, 1.1,   0,   0, -.1, 1.1,   1,   1};
@@ -454,7 +460,8 @@ void main() {
 
 uniform vec2 wnd_size;
 in float border_color;
-in flat int work_axis;
+//in flat int work_axis;
+flat in int work_axis;
 in vec4 crop_borders;
 
 out vec4 fragColor;
@@ -660,7 +667,8 @@ void main() {
 
     #elif defined BROWSE_PIC_FRAGMENT
 
-layout(binding=8) uniform sampler2DArray texture_thumb;
+//layout(binding=8) uniform sampler2DArray texture_thumb;
+uniform sampler2DArray texture_thumb;
 out vec4 fragColor;
 
 in vec2 uv0;

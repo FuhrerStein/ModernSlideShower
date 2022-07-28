@@ -1,4 +1,5 @@
 -- Planned functionality and changes --
+image precaching
 
 show compression and decompression progress when saving/loading lists
 program icon
