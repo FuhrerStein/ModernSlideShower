@@ -29,51 +29,205 @@ void main() {
 
 #define split_constant 67108865   // 2^26+1
 
-vec2 two_sum(float a, float b){
-    float s = a + b;
-    float v = s - a;
-    float e = (a - (s - v)) + (b - v);
-    return vec2(s, e);
-}
+//vec2 two_sum(float a, float b){
+//    float s = a + b;
+//    float v = s - a;
+//    float e = (a - (s - v)) + (b - v);
+//    return vec2(s, e);
+//}
 
-vec2 quick_two_sum(float a, float b){
-    float s = a + b;
-    float e = b - (s - a);
-    return vec2(s, e);
-}
+//vec2 quick_two_sum(float a, float b){
+//    float s = a + b;
+//    float e = b - (s - a);
+//    return vec2(s, e);
+//}
 
-vec4 two_sum_comp(vec2 a, vec2 b){
-    vec2 s = a + b;
-    vec2 v = s - a;
-    vec2 e = (a - (s - v)) + (b - v);
-    return vec4(s.x, e.x, s.y, e.y);
-}
+//vec4 two_sum_comp(vec2 a, vec2 b){
+//    vec2 s = a + b;
+//    vec2 v = s - a;
+//    vec2 e = (a - (s - v)) + (b - v);
+//    return vec4(s.x, e.x, s.y, e.y);
+//}
 
-vec2 two_vec_add(vec2 a, vec2 b){
-    vec2 s, t;
-    s = two_sum(a.x, b.x);
-    t = two_sum(a.y, b.y);
-    s.y += t.x;
-    s = quick_two_sum(s.x, s.y);
-    s.y += t.y;
-    s = quick_two_sum(s.x, s.y);
-    return s;
-}
+//vec2 two_vec_add(vec2 a, vec2 b){
+//    vec2 s, t;
+//    s = two_sum(a.x, b.x);
+//    t = two_sum(a.y, b.y);
+//    s.y += t.x;
+//    s = quick_two_sum(s.x, s.y);
+//    s.y += t.y;
+//    s = quick_two_sum(s.x, s.y);
+//    return s;
+//}
 
-vec2 two_vec_add_vec(vec2 a, vec2 b){
-    vec4 st = two_sum_comp(a, b);
-    st.y += st.z;
-    st.xy = quick_two_sum(st.x, st.y);
-    st.y += st.w;
-    st.xy = quick_two_sum(st.x, st.y);
-    return st.xy;
-}
+//vec2 two_vec_add_vec(vec2 a, vec2 b){
+//    vec4 st = two_sum_comp(a, b);
+//    st.y += st.z;
+//    st.xy = quick_two_sum(st.x, st.y);
+//    st.y += st.w;
+//    st.xy = quick_two_sum(st.x, st.y);
+//    return st.xy;
+//}
+
+//vec2 two_vec_add_vec2(vec2 a, vec2 b){
+//    float s, e;
+//    vec4 st = two_sum_comp(a, b);
+//    st.y += st.z;
+//    s = st.x + st.y;
+//    st.y = st.y - (s - st.x);
+//    st.x = s;
+//    st.y += st.w;
+//    s = st.x + st.y;
+//    e = st.y - (s - st.x);
+//    return vec2(s, e);
+//
+////    return st.xy;
+//}
+
+//vec4 split_comp(vec2 c){
+//    vec2 t = c * split_constant;
+//    vec2 c_hi = t - (t - c);
+//    vec2 c_lo = c - c_hi;
+//    return vec4(c_hi.x, c_lo.x, c_hi.y, c_lo.y);
+//}
+
+//vec2 two_prod(float a, float b){
+//    float p = a * b;
+//    vec2 a_s = split(a);
+//    vec2 b_s = split(b);
+//    float err1 = a_s.x * b_s.x - p;
+//    float err2 = err1 + a_s.y * b_s.x + a_s.x * b_s.y;
+//    float err = a_s.y * b_s.y + err2;
+//    return vec2 (p, err);
+//}
+
+
+//vec2 two_prod_fma(float a, float b){
+//    float x = a * b;
+//    float y = fma(a, b, -x);
+//    return vec2 (x, y);
+//}
+//
+//vec2 two_vec_prod(vec2 a, vec2 b){
+//    vec2 p = two_prod(a.x, b.x);
+//    p.y += a.x * b.y;
+//    p.y += a.y * b.x;
+//    p = quick_two_sum(p.x, p.y);
+//    return p;
+//}
+//
+//vec2 two_vec_prod_fma(vec2 a, vec2 b){
+//    vec2 p = two_prod_fma(a.x, b.x);
+//    p.y += a.x * b.y;
+//    p.y += a.y * b.x;
+//    p = quick_two_sum(p.x, p.y);
+//    return p;
+//}
+
+//vec2 two_vec_prod_fma_s(vec2 a, vec2 b){
+//    float x = a.x * b.x;
+//    float y = fma(a.x, b.x, -x);
+//    y += a.x * b.y;
+//    y += a.y * b.x;
+//    float s = x + y;
+//    float e = y - (s - x);
+//    return vec2(s, e);
+//}
+
+//vec2 two_vec_prod_fma_s1(vec2 a, vec2 b){
+//    float x, y, s, e;
+//    x = a.x * b.x;
+//    y = fma(a.x, b.x, -x);
+//    y = fma(a.x, b.y, y);
+//    y = fma(a.y, b.x, y);
+//    s = x + y;
+//    e = y - (s - x);
+//    return vec2(s, e);
+//}
+
+//vec2 single_sqr(float a){
+//    float p = a * a;
+//    vec2 a_s = split(a);
+//    float err = ((a_s.x * a_s.x - p) + 2 * a_s.x * a_s.y) + a_s.y * a_s.y;
+//    return vec2(p, err);
+//}
+
+//vec2 single_sqr_fma(float a){
+//    float x = a * a;
+//    float y = fma(a, a, -x);
+//    return vec2 (x, y);
+//}
+
+
+//vec2 vec_sqr(vec2 a){
+//    vec2 p = single_sqr(a.x);
+//    p.y += 2 * a.x * a.y;
+//    p = quick_two_sum(p.x, p.y);
+//    return p;
+//}
+
+//vec2 vec_sqr_fma(vec2 a){
+//    float x, y, s, e;
+//    x = a.x * a.x;
+//    y = fma(a.x, a.x, -x);
+//    y = fma(a.x, 2 * a.y, y);
+//    s = x + y;
+//    e = y - (s - x);
+//    return vec2(s, e);
+//}
+
+//vec2 vec_sqr_simple_1(vec2 a){
+//    float p_x, p_y, s, e, t, a_hi_hi, a_hi_lo;
+//    t = a.x * split_constant;
+//    a_hi_hi = t - (t - a.x);
+//    a_hi_lo = a.x - a_hi_hi;
+//    p_x = a.x * a.x;
+//    p_y = ((a_hi_hi * a_hi_hi - p_x) + 2 * a_hi_hi * a_hi_lo) + a_hi_lo * a_hi_lo;
+//    p_y += 2 * a.x * a.y;
+//    s = p_x + p_y;
+//    e = p_y - (s - p_x);
+//    return vec2(s, e);
+//}
+
+//vec2 vec_sqr_simple_2(vec2 a){
+//    float p_x, p_y, s, e;
+//    p_x = a.x * a.x;
+//    p_y = fma(a.x, a.x, -p_x);
+//    p_y = fma(2 * a.x, a.y, p_y);
+//    p_y = fma(a.y, a.y, p_y);
+//    s = p_x + p_y;
+//    e = p_y - (s - p_x);
+//    return vec2(s, e);
+//}
+
+//vec2 vec_sqr_simple_3a(vec2 a){
+//    float p_x, p_y, s, e;
+//    p_x = a.x * a.x;
+//    p_y = fma(a.x, a.x, -p_x);
+//    p_y = fma(2 * a.x, a.y, p_y);
+//    p_y = fma(a.y, a.y, p_y);
+//    s = p_x + p_y;
+////    e = p_y - (s - p_x);
+//    return vec2(s, e);
+//}
+
+//vec2 vec_sqr_simple_4(vec2 a){
+//    float p_x, p_y;
+//    p_x = a.x * a.x;
+//    p_y = fma(a.x, a.x, -p_x);
+//    p_y = fma(2 * a.x, a.y, p_y);
+//    p_y = fma(a.y, a.y, p_y);
+//    return vec2(p_x, p_y);
+//}
+
+
 #if (definition < 1)
 vec2 two_vec_add_vec4(vec2 a, vec2 b){
     float ss, ee;
-    vec2 s = a + b;
-    vec2 v = s - a;
-    vec2 e = (a - (s - v)) + (b - v);
+    vec2 s, v, e;
+    s = a + b;
+    v = s - a;
+    e = (a - (s - v)) + (b - v);
     e.x += s.y;
     ss = s.x + e.x;
     e.x = e.x - (ss - s.x);
@@ -97,33 +251,11 @@ vec2 two_vec_add_vec4(vec2 a, vec2 b){
 }
 #endif
 
-vec2 two_vec_add_vec2(vec2 a, vec2 b){
-    float s, e;
-    vec4 st = two_sum_comp(a, b);
-    st.y += st.z;
-    s = st.x + st.y;
-    st.y = st.y - (s - st.x);
-    st.x = s;
-    st.y += st.w;
-    s = st.x + st.y;
-    e = st.y - (s - st.x);
-    return vec2(s, e);
-
-//    return st.xy;
-}
-
 vec2 split(float a){
     float t = a * split_constant;
     float a_hi = t - (t - a);
     float a_lo = a - a_hi;
     return vec2(a_hi, a_lo);
-}
-
-vec4 split_comp(vec2 c){
-    vec2 t = c * split_constant;
-    vec2 c_hi = t - (t - c);
-    vec2 c_lo = c - c_hi;
-    return vec4(c_hi.x, c_lo.x, c_hi.y, c_lo.y);
 }
 
 vec2 two_prod(float a, float b){
@@ -132,49 +264,6 @@ vec2 two_prod(float a, float b){
     vec2 b_s = split(b);
     float err = ((a_s.x * b_s.x - p) + a_s.x * b_s.y + a_s.y * b_s.x) + a_s.y * b_s.y;
     return vec2(p, err);
-}
-
-//vec2 two_prod(float a, float b){
-//    float p = a * b;
-//    vec2 a_s = split(a);
-//    vec2 b_s = split(b);
-//    float err1 = a_s.x * b_s.x - p;
-//    float err2 = err1 + a_s.y * b_s.x + a_s.x * b_s.y;
-//    float err = a_s.y * b_s.y + err2;
-//    return vec2 (p, err);
-//}
-
-
-vec2 two_prod_fma(float a, float b){
-    float x = a * b;
-    float y = fma(a, b, -x);
-    return vec2 (x, y);
-}
-
-vec2 two_vec_prod(vec2 a, vec2 b){
-    vec2 p = two_prod(a.x, b.x);
-    p.y += a.x * b.y;
-    p.y += a.y * b.x;
-    p = quick_two_sum(p.x, p.y);
-    return p;
-}
-
-vec2 two_vec_prod_fma(vec2 a, vec2 b){
-    vec2 p = two_prod_fma(a.x, b.x);
-    p.y += a.x * b.y;
-    p.y += a.y * b.x;
-    p = quick_two_sum(p.x, p.y);
-    return p;
-}
-
-vec2 two_vec_prod_fma_s(vec2 a, vec2 b){
-    float x = a.x * b.x;
-    float y = fma(a.x, b.x, -x);
-    y += a.x * b.y;
-    y += a.y * b.x;
-    float s = x + y;
-    float e = y - (s - x);
-    return vec2(s, e);
 }
 
 vec2 two_vec_prod_fma_s0(vec2 a, vec2 b){
@@ -189,92 +278,6 @@ vec2 two_vec_prod_fma_s0(vec2 a, vec2 b){
     return vec2(s, e);
 }
 
-vec2 two_vec_prod_fma_s1(vec2 a, vec2 b){
-    float x, y, s, e;
-    x = a.x * b.x;
-    y = fma(a.x, b.x, -x);
-    y = fma(a.x, b.y, y);
-    y = fma(a.y, b.x, y);
-    s = x + y;
-    e = y - (s - x);
-    return vec2(s, e);
-}
-
-vec2 single_sqr(float a){
-    float p = a * a;
-    vec2 a_s = split(a);
-    float err = ((a_s.x * a_s.x - p) + 2 * a_s.x * a_s.y) + a_s.y * a_s.y;
-    return vec2(p, err);
-}
-
-vec2 single_sqr_fma(float a){
-    float x = a * a;
-    float y = fma(a, a, -x);
-    return vec2 (x, y);
-}
-
-
-vec2 vec_sqr(vec2 a){
-    vec2 p = single_sqr(a.x);
-    p.y += 2 * a.x * a.y;
-    p = quick_two_sum(p.x, p.y);
-    return p;
-}
-
-vec2 vec_sqr_fma(vec2 a){
-    float x, y, s, e;
-    x = a.x * a.x;
-    y = fma(a.x, a.x, -x);
-    y = fma(a.x, 2 * a.y, y);
-    s = x + y;
-    e = y - (s - x);
-    return vec2(s, e);
-}
-
-vec2 vec_sqr_simple_1(vec2 a){
-    float p_x, p_y, s, e, t, a_hi_hi, a_hi_lo;
-    t = a.x * split_constant;
-    a_hi_hi = t - (t - a.x);
-    a_hi_lo = a.x - a_hi_hi;
-    p_x = a.x * a.x;
-    p_y = ((a_hi_hi * a_hi_hi - p_x) + 2 * a_hi_hi * a_hi_lo) + a_hi_lo * a_hi_lo;
-    p_y += 2 * a.x * a.y;
-    s = p_x + p_y;
-    e = p_y - (s - p_x);
-    return vec2(s, e);
-}
-
-vec2 vec_sqr_simple_2(vec2 a){
-    float p_x, p_y, s, e;
-    p_x = a.x * a.x;
-    p_y = fma(a.x, a.x, -p_x);
-    p_y = fma(2 * a.x, a.y, p_y);
-    p_y = fma(a.y, a.y, p_y);
-    s = p_x + p_y;
-    e = p_y - (s - p_x);
-    return vec2(s, e);
-}
-
-vec2 vec_sqr_simple_3a(vec2 a){
-    float p_x, p_y, s, e;
-    p_x = a.x * a.x;
-    p_y = fma(a.x, a.x, -p_x);
-    p_y = fma(2 * a.x, a.y, p_y);
-    p_y = fma(a.y, a.y, p_y);
-    s = p_x + p_y;
-//    e = p_y - (s - p_x);
-    return vec2(s, e);
-}
-
-vec2 vec_sqr_simple_4(vec2 a){
-    float p_x, p_y;
-    p_x = a.x * a.x;
-    p_y = fma(a.x, a.x, -p_x);
-    p_y = fma(2 * a.x, a.y, p_y);
-    p_y = fma(a.y, a.y, p_y);
-    return vec2(p_x, p_y);
-}
-
 vec2 vec_sqr_simple_5(vec2 a){
     float p_x, p_y;
     p_x = a.x * a.x;
@@ -285,14 +288,6 @@ vec2 vec_sqr_simple_5(vec2 a){
 
 
 #define prezoom 4e-3
-
-//layout(binding=8, r32ui) uniform uimage2D histogram_texture;
-// layout(binding=4, r32ui) uniform uimage2D mandel_stat_texture;
-//uniform sampler2D mandel_stat_texture;
-// layout(binding=4) buffer layoutName
-// {
-//     uint data_SSBO[2048];
-// };
 
 uniform float invert_zoom;
 uniform float complexity;

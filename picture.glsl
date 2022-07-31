@@ -496,9 +496,11 @@ void main() {
 
 in float alpha;
 out vec4 fragColor;
+uniform int finish_n;
 
 void main() {
     fragColor = vec4(1);
+    fragColor.gb -= float(finish_n * finish_n) / 10000;
     fragColor.a = alpha - pow(distance(gl_PointCoord.xy, vec2(0.5)), 2.5);
 }
 

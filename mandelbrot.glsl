@@ -119,12 +119,12 @@ dvec2 split(double a){
     return dvec2(a_hi, a_lo);
 }
 
-dvec4 split_comp(dvec2 c){
-    dvec2 t = c * split_constant;
-    dvec2 c_hi = t - (t - c);
-    dvec2 c_lo = c - c_hi;
-    return dvec4(c_hi.x, c_lo.x, c_hi.y, c_lo.y);
-}
+//dvec4 split_comp(dvec2 c){
+//    dvec2 t = c * split_constant;
+//    dvec2 c_hi = t - (t - c);
+//    dvec2 c_lo = c - c_hi;
+//    return dvec4(c_hi.x, c_lo.x, c_hi.y, c_lo.y);
+//}
 
 dvec2 two_prod(double a, double b){
     double p = a * b;

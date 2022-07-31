@@ -1,6 +1,4 @@
 -- Planned functionality and changes --
-image precaching
-
 show compression and decompression progress when saving/loading lists
 program icon
 filelist position indicator
@@ -36,6 +34,7 @@ low-power mandelbrot-like mode, also shown when no images left.
 
 -- Implemented functionality and changes --
 
+image precaching
 in case of deep unzoom, show thumbnails
 load preview thumbnails in separate process
 choose another image by zooming into its thumbnail
