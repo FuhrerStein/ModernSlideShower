@@ -173,19 +173,22 @@ def image_loader_process(in_queue: multiprocessing.Queue, out_queue: multiproces
         task_data = in_queue.get()
         if task_data is None:
             print("Exit loader")
-            out_queue.close()
-            in_queue.close()
+            # in_queue.close()
+            # out_queue.close()
+            # print("Exit loader2")
             return
         pic_data = load_image(task_data[1], do_thumb=do_thumb)
         try:
             out_queue.put((task_data, *pic_data), timeout=2)
-        except:
+        except Exception:
             pass
 
 
 def init_image_loader(do_thumb=False):
     thumb_queue_tasks = multiprocessing.Queue()
     thumb_queue_data = multiprocessing.Queue()
+    thumb_queue_tasks.cancel_join_thread()
+    thumb_queue_data.cancel_join_thread()
     thumb_loader = multiprocessing.Process(target=image_loader_process,
                                            args=(thumb_queue_tasks, thumb_queue_data, do_thumb))
     thumb_loader.start()
@@ -234,6 +237,7 @@ class ModernSlideShower(mglw.WindowConfig):
     thumb_spacing = 5  # how many percent of space between thumbnails
     thumb_period = 1 + thumb_spacing / 100
     thumb_loader = multiprocessing.Process
+    image_loader = multiprocessing.Process
     thumb_queue_tasks = multiprocessing.SimpleQueue
     thumb_queue_data = multiprocessing.SimpleQueue
     image_queue_tasks = multiprocessing.SimpleQueue
@@ -1795,6 +1799,9 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_round['finish_n'] = self.mouse_move_cumulative
 
     def mouse_position_event(self, x, y, dx, dy):
+        if self.pressed_mouse:  # on some systems drag registers as positioning
+            self.mouse_drag_event(x, y, dx, dy)
+            return
         self.mouse_buffer += [dx, dy]
 
         if self.interface_mode == InterfaceMode.GENERAL:
@@ -1803,6 +1810,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 return
             if self.big_zoom and self.switch_mode != SWITCH_MODE_COMPARE:
                 self.move_image(dx, -dy)
+                self.mouse_buffer *= 0
                 return
 
             if self.switch_mode == SWITCH_MODE_CIRCLES:
@@ -2354,11 +2362,33 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def close(self):
         print("Closing program")
+        # if self.wnd.fullscreen:
+        #     self.discrete_actions(Actions.WINDOW_SWITCH_FULLSCREEN)
+        # self.wnd.set_visible(False)
+        # self.wnd.fullscreen = False
         if self.thumb_loader != multiprocessing.Process:
-            self.thumb_queue_tasks.put(None)
-            # self.thumb_queue_tasks.join()
+            try:
+                self.thumb_queue_tasks.put(None)
+            finally:
+                pass
 
-            self.thumb_queue_tasks.close()
+            # self.thumb_queue_tasks.close()
+            self.thumb_loader.join(timeout=1)
+            if self.thumb_loader.exitcode is None:
+                self.thumb_loader.terminate()
+            # self.thumb_loader.close()
+        if self.image_loader != multiprocessing.Process:
+            try:
+                # self.thumb_queue_tasks.cancel_join_thread()¶
+                self.image_queue_tasks.put(None)
+            finally:
+                pass
+
+            # self.image_queue_tasks.close()
+            self.image_loader.join(timeout=1)
+            if self.image_loader.exitcode is None:
+                self.image_loader.terminate()
+            # self.image_loader.close()
 
     def render_preload_imgui(self):
         self.wnd.swap_buffers()
@@ -2380,7 +2410,6 @@ class ModernSlideShower(mglw.WindowConfig):
         imgui.render()
         self.imgui.render(imgui.get_draw_data())
 
-
     def render(self, time=0, frame_time=0):
         if not self.init_end_time:
             self.render_preload()
@@ -2396,6 +2425,8 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.wnd.swap_buffers()
         self.wnd.clear()
+        if self.wnd.is_closing:
+            return
 
         if self.interface_mode == InterfaceMode.MANDELBROT:
             self.mandelbrot_routine(self.current_frame_start_time, frame_time_chunk)
