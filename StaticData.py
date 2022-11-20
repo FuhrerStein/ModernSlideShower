@@ -91,10 +91,10 @@ class Actions:
 
     KEYBOARD_MOVEMENT_ZOOM_IN_ON = 60
     KEYBOARD_MOVEMENT_ZOOM_OUT_ON = 61
-    KEYBOARD_MOVEMENT_MOVE_UP_ON = 62
-    KEYBOARD_MOVEMENT_MOVE_DOWN_ON = 63
-    KEYBOARD_MOVEMENT_MOVE_LEFT_ON = 64
-    KEYBOARD_MOVEMENT_MOVE_RIGHT_ON = 65
+    KEYBOARD_UP_PRESS = 62
+    KEYBOARD_DOWN_PRESS = 63
+    KEYBOARD_LEFT_PRESS = 64
+    KEYBOARD_RIGHT_PRESS = 65
     KEYBOARD_MOVEMENT_LEFT_BRACKET_ON = 66
     KEYBOARD_MOVEMENT_RIGHT_BRACKET_ON = 67
     KEYBOARD_FLIPPING_FAST_NEXT_ON = 68
@@ -102,14 +102,14 @@ class Actions:
 
     KEYBOARD_MOVEMENT_ZOOM_IN_OFF = 70
     KEYBOARD_MOVEMENT_ZOOM_OUT_OFF = 71
-    KEYBOARD_MOVEMENT_MOVE_UP_OFF = 72
-    KEYBOARD_MOVEMENT_MOVE_DOWN_OFF = 73
-    KEYBOARD_MOVEMENT_MOVE_LEFT_OFF = 74
-    KEYBOARD_MOVEMENT_MOVE_RIGHT_OFF = 75
+    KEYBOARD_UP_RELEASE = 72
+    KEYBOARD_DOWN_RELEASE = 73
+    KEYBOARD_LEFT_RELEASE = 74
+    KEYBOARD_RIGHT_RELEASE = 75
     KEYBOARD_MOVEMENT_LEFT_BRACKET_OFF = 76
     KEYBOARD_MOVEMENT_RIGHT_BRACKET_OFF = 77
-    KEYBOARD_FLIPPING_OFF = 78
-    KEYBOARD_MOVEMENT_MOVE_ALL_OFF = 79
+    ACTION_SPACE_RELEASE = 78
+    KEYBOARD_MOVEMENT_MOVE_ALL_RELEASE = 79
 
     MANDEL_GOOD_ZONES_TOGGLE = 80
     MANDEL_DEBUG_TOGGLE = 81
@@ -122,12 +122,12 @@ class Actions:
     ACTION_GENERAL_RIGHT = 91
     ACTION_GENERAL_UP = 92
     ACTION_GENERAL_DOWN = 93
-    ACTION_GENERAL_SPACE = 94
+    ACTION_SPACE_PRESS = 94
 
     WINDOW_SWITCH_FULLSCREEN = 95
+    WINDOW_GOTO_NEXT_SCREEN = 96
 
     CLOSE_PROGRAM = 100
-
 
 
 # MAIN_MENU structure:
@@ -153,6 +153,11 @@ MAIN_MENU = (
     ('Transform image', 'T', None, None, InterfaceMode.TRANSFORM),
     ('Settings', 'S', None, None, InterfaceMode.SETTINGS),
     ('Mandelbrot set', 'U', None, None, InterfaceMode.MANDELBROT),
+    "--",
+    ('Random image in the list', 'F5', None, None, Actions.IMAGE_RANDOM_FILE),
+    ('Random image in current directory', 'F6', None, None, Actions.IMAGE_RANDOM_IN_CURRENT_DIR),
+    ('First image in random directory', 'F7', None, None, Actions.IMAGE_RANDOM_DIR_FIRST_FILE),
+    ('Random image in random directory', 'F8', None, None, Actions.IMAGE_RANDOM_DIR_RANDOM_FILE),
     "--",
     ('Keyboard shortcuts', 'F1, H', lambda x: x.central_message_showing, None, Actions.CENTRAL_MESSAGE_TOGGLE),
     ('Quit', 'Esc', None, None, Actions.CLOSE_PROGRAM),
@@ -192,11 +197,6 @@ KEYBOARD_SHORTCUTS = {
     (prs, InterfaceMode.GENERAL, True, False, False, KEY.R): Actions.REVERT_IMAGE,
 
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.ENTER): Actions.APPLY_ROTATION_90,
-    (prs, InterfaceMode.GENERAL, False, False, False, KEY.SPACE): Actions.ACTION_GENERAL_SPACE,
-    (prs, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.ACTION_GENERAL_RIGHT,
-    (prs, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.ACTION_GENERAL_LEFT,
-    (prs, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.ACTION_GENERAL_UP,
-    (prs, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.ACTION_GENERAL_DOWN,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.PAGEUP): Actions.IMAGE_FOLDER_PREVIOUS,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.PAGEDOWN): Actions.IMAGE_FOLDER_NEXT,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.F5): Actions.IMAGE_RANDOM_FILE,
@@ -211,16 +211,28 @@ KEYBOARD_SHORTCUTS = {
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_MULTIPLY): Actions.PIC_ZOOM_FIT,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_DIVIDE): Actions.PIC_ZOOM_100,
 
-    (prs, InterfaceMode.GENERAL, False, True, False, KEY.RIGHT): Actions.KEYBOARD_MOVEMENT_MOVE_RIGHT_ON,
-    (prs, InterfaceMode.GENERAL, False, True, False, KEY.LEFT): Actions.KEYBOARD_MOVEMENT_MOVE_LEFT_ON,
-    (prs, InterfaceMode.GENERAL, False, True, False, KEY.UP): Actions.KEYBOARD_MOVEMENT_MOVE_UP_ON,
-    (prs, InterfaceMode.GENERAL, False, True, False, KEY.DOWN): Actions.KEYBOARD_MOVEMENT_MOVE_DOWN_ON,
 
-    (rls, InterfaceMode.GENERAL, False, False, False, KEY.SPACE): Actions.KEYBOARD_FLIPPING_OFF,
-    (rls, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.KEYBOARD_FLIPPING_OFF,
-    (rls, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.KEYBOARD_FLIPPING_OFF,
-    (rls, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.KEYBOARD_FLIPPING_OFF,
-    (rls, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.KEYBOARD_FLIPPING_OFF,
+    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.ACTION_GENERAL_RIGHT,
+    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.ACTION_GENERAL_LEFT,
+    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.ACTION_GENERAL_UP,
+    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.ACTION_GENERAL_DOWN,
+
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.KEYBOARD_RIGHT_PRESS,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.KEYBOARD_LEFT_PRESS,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.KEYBOARD_UP_PRESS,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.KEYBOARD_DOWN_PRESS,
+
+    (rls, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.KEYBOARD_RIGHT_RELEASE,
+    (rls, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.KEYBOARD_LEFT_RELEASE,
+    (rls, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.KEYBOARD_UP_RELEASE,
+    (rls, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.KEYBOARD_DOWN_RELEASE,
+
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.SPACE): Actions.ACTION_SPACE_PRESS,
+    (rls, InterfaceMode.GENERAL, False, False, False, KEY.SPACE): Actions.ACTION_SPACE_RELEASE,
+    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.KEYBOARD_FLIPPING_OFF,
+    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.KEYBOARD_FLIPPING_OFF,
+    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.KEYBOARD_FLIPPING_OFF,
+    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.KEYBOARD_FLIPPING_OFF,
 
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_ADD): Actions.KEYBOARD_MOVEMENT_ZOOM_IN_ON,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.EQUAL): Actions.KEYBOARD_MOVEMENT_ZOOM_IN_ON,
@@ -265,24 +277,20 @@ KEYBOARD_SHORTCUTS = {
 
     (prs, InterfaceMode.TRANSFORM, False, False, False, KEY.ENTER): Actions.APPLY_TRANSFORM,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.F): Actions.WINDOW_SWITCH_FULLSCREEN,
+    (prs, InterfaceMode.GENERAL, True, False, False, KEY.F): Actions.WINDOW_GOTO_NEXT_SCREEN,
 
-    (rls, InterfaceMode.GENERAL, False, True, False, KEY.RIGHT): Actions.KEYBOARD_MOVEMENT_MOVE_RIGHT_OFF,
-    (rls, InterfaceMode.GENERAL, False, True, False, KEY.LEFT): Actions.KEYBOARD_MOVEMENT_MOVE_LEFT_OFF,
-    (rls, InterfaceMode.GENERAL, False, True, False, KEY.UP): Actions.KEYBOARD_MOVEMENT_MOVE_UP_OFF,
-    (rls, InterfaceMode.GENERAL, False, True, False, KEY.DOWN): Actions.KEYBOARD_MOVEMENT_MOVE_DOWN_OFF,
+    (rls, InterfaceMode.GENERAL, False, False, False, KEY.LSHIFT): Actions.KEYBOARD_MOVEMENT_MOVE_ALL_RELEASE,
+    (rls, InterfaceMode.GENERAL, False, False, False, KEY.RSHIFT): Actions.KEYBOARD_MOVEMENT_MOVE_ALL_RELEASE,
 
-    (rls, InterfaceMode.GENERAL, False, False, False, KEY.LSHIFT): Actions.KEYBOARD_MOVEMENT_MOVE_ALL_OFF,
-    (rls, InterfaceMode.GENERAL, False, False, False, KEY.RSHIFT): Actions.KEYBOARD_MOVEMENT_MOVE_ALL_OFF,
+    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.RIGHT): Actions.KEYBOARD_RIGHT_PRESS,
+    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.LEFT): Actions.KEYBOARD_LEFT_PRESS,
+    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.UP): Actions.KEYBOARD_UP_PRESS,
+    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.DOWN): Actions.KEYBOARD_DOWN_PRESS,
 
-    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.RIGHT): Actions.KEYBOARD_MOVEMENT_MOVE_RIGHT_ON,
-    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.LEFT): Actions.KEYBOARD_MOVEMENT_MOVE_LEFT_ON,
-    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.UP): Actions.KEYBOARD_MOVEMENT_MOVE_UP_ON,
-    (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.DOWN): Actions.KEYBOARD_MOVEMENT_MOVE_DOWN_ON,
-
-    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.RIGHT): Actions.KEYBOARD_MOVEMENT_MOVE_RIGHT_OFF,
-    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.LEFT): Actions.KEYBOARD_MOVEMENT_MOVE_LEFT_OFF,
-    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.UP): Actions.KEYBOARD_MOVEMENT_MOVE_UP_OFF,
-    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.DOWN): Actions.KEYBOARD_MOVEMENT_MOVE_DOWN_OFF,
+    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.RIGHT): Actions.KEYBOARD_RIGHT_RELEASE,
+    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.LEFT): Actions.KEYBOARD_LEFT_RELEASE,
+    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.UP): Actions.KEYBOARD_UP_RELEASE,
+    (rls, InterfaceMode.MANDELBROT, False, False, False, KEY.DOWN): Actions.KEYBOARD_DOWN_RELEASE,
 
     (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.BRACKETLEFT): Actions.KEYBOARD_MOVEMENT_LEFT_BRACKET_ON,
     (prs, InterfaceMode.MANDELBROT, False, False, False, KEY.BRACKETRIGHT): Actions.KEYBOARD_MOVEMENT_RIGHT_BRACKET_ON,
