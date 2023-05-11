@@ -16,24 +16,28 @@ avoid swapping textures every frame
 "repeat last levels" single-key operation
 rewrite help for other modes: levels, transform, mandelbrot
 transition settings for next image, next folder, and first image in list
-do not switch immadiately at edges in compare mode
+do not switch immediately at edges in compare mode
+in compare mode move splitter faster near center of the screen
 in thumbs mode show which photos are accepted and rejected
 in thumbs mode limit horizontal movement
-in thumbs mode minimal stack to be 3 thumbs in width
-animate thumbnails rearangement when unzooming
+animate thumbnails rearrangement when unzooming
 
-andvanced ultra-zoom algorithm
+advanced ultra-zoom algorithm
 
 Scroll mode. Show all images in one scroll with equal width and equal zoom
 Zoom mode. Switch to next image with extreme zoom on previous. Also in slideshow.
 
 read-only mode
 levels: contrast regulation
-Switch all db to pandas
+Switch all db to pandas (bad idea - slow)
 low-power mandelbrot-like mode, also shown when no images left.
+
+
+
 
 -- Implemented functionality and changes --
 
+in thumbs mode minimal stack to be 3 thumbs in width
 image precaching
 in case of deep unzoom, show thumbnails
 load preview thumbnails in separate process

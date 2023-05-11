@@ -28,7 +28,7 @@ from natsort import natsorted
 from StaticData import *
 
 
-FULL_SCREEN_ID = 1  # Select here ID of screen to use in fullscreen mode.
+FULL_SCREEN_ID = 0  # Select here ID of screen to use in fullscreen mode.
 BUTTON_STICKING_TIME = 0.3  # After passing this time button acts as temporary.
 IMAGE_UN_UNSEE_TIME = 0.2  # Time needed to consider image as been seen
 
@@ -37,7 +37,7 @@ CENRAL_WND_FLAGS = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE | imgui.WINDOW_
 SIDE_WND_FLAGS = CENRAL_WND_FLAGS | imgui.WINDOW_NO_TITLE_BAR
 
 LIST_FILE_TYPE = 'sldlist'
-JPEGTRAN_EXE_PATH = "c:\\Soft\\libjpeg-turbo-gcc\\bin"
+JPEGTRAN_EXE_PATH = "c:\\Soft\\libjpeg-turbo-gcc64\\bin"
 JPEGTRAN_EXE_FILE = "jpegtran.exe"
 JPEGTRAN_OPTIONS = ' -optimize -rotate {0} -trim -copy all -outfile "{1}" "{1}"'
 
@@ -46,6 +46,7 @@ RAW_FILE_TYPES = ('nef', 'dng', 'arw')
 ALL_FILE_TYPES = IMAGE_FILE_TYPES + RAW_FILE_TYPES
 EMPTY_IMAGE_LIST = "Empty.jpg"
 SAVE_FOLDER = ".\\SaveFolder\\"
+# SCAN_ALL_FILES = False
 Point = collections.namedtuple('Point', ['x', 'y'])
 MANDEL_PREZOOM = 4e-3
 
@@ -119,7 +120,7 @@ def format_bytes_3(size):
         f_size /= power
         n += 1
     digits = 3 - math.ceil(math.log10(f_size)) if f_size < 1000 else 0
-    print(f"size: {size}, f_size: {f_size}, digits: {digits}")
+    # print(f"size: {size}, f_size: {f_size}, digits: {digits}")
     formatted_string = f'{f_size:.{digits:d}f} '
     formatted_string += f'{power_labels[n]}  '
     formatted_string += f'({size:,d} B)'
@@ -281,14 +282,14 @@ class ModernSlideShower(mglw.WindowConfig):
     pic_angle = 0.
     pic_angle_future = 0.
     big_zoom = False
-    gl_program_pic = [moderngl.program] * 2
-    gl_program_borders = moderngl.program
-    gl_program_round = moderngl.program
-    gl_program_mandel = [moderngl.program] * 3
-    gl_program_crop = moderngl.program
-    gl_program_browse_squares = moderngl.program
-    gl_program_browse_pic = moderngl.program
-    gl_program_compare = moderngl.program
+    gl_program_pic = [moderngl.Program] * 2
+    gl_program_borders = moderngl.Program
+    gl_program_round = moderngl.Program
+    gl_program_mandel = [moderngl.Program] * 3
+    gl_program_crop = moderngl.Program
+    gl_program_browse_squares = moderngl.Program
+    gl_program_browse_pic = moderngl.Program
+    gl_program_compare = moderngl.Program
     use_old_gl = False
     mandel_id = 0
     program_id = 0
@@ -307,9 +308,9 @@ class ModernSlideShower(mglw.WindowConfig):
     thumb_central_index = 0
     current_texture = moderngl.Texture
     current_texture_old = moderngl.Texture
-    histo_texture = moderngl.texture
-    histo_texture_empty = moderngl.buffer
-    mandel_stat_empty = moderngl.buffer
+    histo_texture = moderngl.Texture
+    histo_texture_empty = moderngl.Buffer
+    mandel_stat_empty = moderngl.Buffer
     histogram_array = np.empty
 
     max_keyboard_flip_speed = .3
@@ -326,6 +327,7 @@ class ModernSlideShower(mglw.WindowConfig):
     interface_mode = InterfaceMode.GENERAL
     switch_mode = SWITCH_MODE_CIRCLES
 
+    scan_all_files = False
     split_line = 0
 
     right_click_start = 0
@@ -419,6 +421,7 @@ class ModernSlideShower(mglw.WindowConfig):
     mouse_buffer = np.array([0., 0.])
 
     show_image_info = 0
+    show_rapid_menu = False
     current_image_file_size = 0
 
     central_message_showing = False
@@ -516,8 +519,14 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def post_init(self):
         self.window_size = self.wnd.size
-        if "-r" in sys.argv or "-F7" in sys.argv:
-            self.start_with_random_image = True
+        if "-r" in sys.argv or "-F5" in sys.argv:
+            self.start_with_random_image = Actions.IMAGE_RANDOM_FILE
+        if "-F6" in sys.argv:
+            self.start_with_random_image = Actions.IMAGE_RANDOM_IN_CURRENT_DIR
+        if "-F7" in sys.argv:
+            self.start_with_random_image = Actions.IMAGE_RANDOM_DIR_FIRST_FILE
+        if "-F8" in sys.argv:
+            self.start_with_random_image = Actions.IMAGE_RANDOM_DIR_RANDOM_FILE
         self.get_images()
 
         if self.wnd.is_closing:
@@ -534,7 +543,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.tinder_stats[1] = self.image_count
         self.find_common_path()
         if self.start_with_random_image:
-            self.random_image(Actions.IMAGE_RANDOM_DIR_FIRST_FILE if "-F7" in sys.argv else None)
+            self.random_image(self.start_with_random_image)
         else:
             self.load_image()
             self.unschedule_pop_message(7)
@@ -630,7 +639,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 [self.scan_directory(directory) for directory in dir_arguments]
             if len(file_arguments):
                 if len(dir_arguments) == 0 and len(file_arguments) == 1:
-                    if file_arguments[0].lower().endswith(ALL_FILE_TYPES):
+                    if file_arguments[0].lower().endswith(ALL_FILE_TYPES) or self.scan_all_files:
                         self.scan_directory(os.path.dirname(file_arguments[0]), file_arguments[0])
                     else:
                         self.scan_file(file_arguments[0])
@@ -675,7 +684,7 @@ class ModernSlideShower(mglw.WindowConfig):
             for f in files:
                 if self.wnd.is_closing:
                     return
-                if f.lower().endswith(ALL_FILE_TYPES):
+                if f.lower().endswith(ALL_FILE_TYPES) or self.scan_all_files:
                     img_path = os.path.join(root, f)
                     self.image_count += 1
                     file_count += 1
@@ -695,7 +704,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.file_list += natsorted(this_dir_file_list)
 
     def scan_file(self, filename):
-        if filename.lower().endswith(ALL_FILE_TYPES):
+        if filename.lower().endswith(ALL_FILE_TYPES) or self.scan_all_files:
             file_dir = os.path.dirname(filename)
             last_dir = ""
             if len(self.dir_list):
@@ -825,7 +834,7 @@ class ModernSlideShower(mglw.WindowConfig):
     def release_texture(self, texture):
         if self.image_texture == texture:
             return
-        if type(texture) is moderngl.texture.Texture:
+        if type(texture) is moderngl.Texture:
             try:
                 texture.release()
             except Exception:
@@ -1193,7 +1202,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 # speed *= sigmoid(abs(self.pic_move_speed.imag) - 1, 0, 40)
                 # if abs(self.pic_move_speed.real) and abs(self.pic_move_speed.imag) / abs(self.pic_move_speed.real) > .5:
                 correction_vector -= self.pic_pos_current.real * speed * abs(self.pic_pos_current.real)
-                print(correction_vector)
+                # print(correction_vector)
         else:
             right_edge = 1
             if self.interface_mode in {InterfaceMode.LEVELS, InterfaceMode.TRANSFORM}:
@@ -1448,7 +1457,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.run_reduce_flipping_speed = - .15
         if abs(self.mouse_move_cumulative) > 100:
             self.run_flip_once = 1 if self.mouse_move_cumulative > 0 else -1
-        self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+        self.gl_program_round['finish_n'] = int(self.mouse_move_cumulative)
 
     def flip_once(self):
         self.new_image_index += self.run_flip_once
@@ -1537,7 +1546,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_borders['resize_y'] = self.resize_y - 1
         self.gl_program_borders['crop'] = tuple(self.crop_borders)
 
-        self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+        self.gl_program_round['finish_n'] = int(self.mouse_move_cumulative)
 
         if self.interface_mode == InterfaceMode.TRANSFORM:
             self.gl_program_pic[self.program_id]['process_type'] = 1
@@ -1632,7 +1641,7 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.flip_once()
                     self.mouse_move_cumulative = mouse_cumulative
 
-        self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+        self.gl_program_round['finish_n'] = int(self.mouse_move_cumulative)
 
         if abs(self.mouse_buffer[1]) > 100:
             if self.autoflip_speed:
@@ -1659,7 +1668,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.mark_image_and_switch(self.mouse_move_cumulative > 0)
             self.rearm_gesture_timeout()
 
-        self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+        self.gl_program_round['finish_n'] = int(self.mouse_move_cumulative)
 
         if abs(self.mouse_buffer[1]) > 100:
             self.run_flip_once = 1 if self.mouse_buffer[1] > 0 else -1
@@ -1777,7 +1786,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.run_reduce_flipping_speed = - .15
         if abs(self.mouse_move_cumulative) > 100:
             self.run_flip_once = 1 if self.mouse_move_cumulative > 0 else -1
-        self.gl_program_round['finish_n'] = self.mouse_move_cumulative
+        self.gl_program_round['finish_n'] = int(self.mouse_move_cumulative)
 
     def mouse_position_event(self, x, y, dx, dy):
         if self.pressed_mouse:  # on some systems drag registers as positioning
@@ -1973,6 +1982,7 @@ class ModernSlideShower(mglw.WindowConfig):
                     self.reset_pic_position(full=False)
                     self.init_end_time = self.timer.time
             self.show_image_info = self.show_image_info % 2
+            self.show_rapid_menu = False
 
         if self.interface_mode == InterfaceMode.MENU and button == 1:
             self.imgui.mouse_release_event(20, self.mouse_buffer[1], button)
@@ -2437,7 +2447,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if self.interface_mode == InterfaceMode.LEVELS:
                 self.read_and_clear_histo()
             if self.transition_stage < 1:
-                if type(self.current_texture_old) is moderngl.texture.Texture:
+                if type(self.current_texture_old) is moderngl.Texture:
                     self.current_texture_old.use(5)
                     self.picture_vao.render(self.gl_program_pic[1 - self.program_id], vertices=1)
 
@@ -2449,11 +2459,17 @@ class ModernSlideShower(mglw.WindowConfig):
             self.current_texture.use(5)
             self.picture_vao.render(self.gl_program_pic[self.program_id], vertices=1)
 
-            if self.switch_mode == SWITCH_MODE_COMPARE and type(self.current_texture_old) is moderngl.texture.Texture:
+            if self.switch_mode == SWITCH_MODE_COMPARE and type(self.current_texture_old) is moderngl.Texture:
                 self.render_compare()
 
             self.picture_vao.transform(self.gl_program_borders, self.ret_vertex_buffer, vertices=1)
             self.pic_screen_borders = np.frombuffer(self.ret_vertex_buffer.read(), dtype=np.float32)
+            self.pic_screen_borders = np.nan_to_num(self.pic_screen_borders, True, 0, 100, 100)
+            self.pic_screen_borders = np.clip(self.pic_screen_borders, (-10400, -10300, -10200, -10100), (10100, 10200, 10300, 10400))
+            if (self.pic_screen_borders[2] == self.pic_screen_borders[0])\
+                    or (self.pic_screen_borders[3] == self.pic_screen_borders[1]):
+                self.pic_screen_borders = np.array((0, 110, 100, 210))
+
             self.check_small_big_zoom()
 
             if self.interface_mode == InterfaceMode.TRANSFORM:
@@ -2463,7 +2479,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if self.switch_mode != SWITCH_MODE_COMPARE:
                 self.round_vao.render(self.gl_program_round)
             if self.switch_mode != SWITCH_MODE_CIRCLES and self.interface_mode == InterfaceMode.GENERAL:
-                self.gl_program_round['finish_n'] = self.mouse_buffer[1]
+                self.gl_program_round['finish_n'] = int(self.mouse_buffer[1])
                 if self.switch_mode == SWITCH_MODE_COMPARE:
                     self.gl_program_round['move_to_right'] = bool((self.mouse_move_cumulative % 100) > 50)
                 else:
@@ -2496,6 +2512,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if self.pressed_mouse == 1 and not self.show_image_info:
                 if self.timer.time - self.left_click_start > .15:
                     self.show_image_info = self.show_image_info or 2
+                    self.show_rapid_menu = True
 
                     # self.show_image_info = 2
 
@@ -2559,7 +2576,7 @@ class ModernSlideShower(mglw.WindowConfig):
         pic_w = self.pic_screen_borders[2] - self.pic_screen_borders[0]
         pic_h = self.pic_screen_borders[3] - self.pic_screen_borders[1]
 
-        self.pic_square = max(pic_w, pic_h)
+        self.pic_square = max(pic_w, pic_h, 1)
         small_zoom_x = self.pic_square < self.window_size.x * .8
         small_zoom_y = self.pic_square < self.window_size.y * .8
         small_zoom = small_zoom_x and small_zoom_y and self.timer.time - self.init_end_time > 1
@@ -2597,8 +2614,13 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.show_image_info:
             self.imgui_image_info()
 
+        if self.show_rapid_menu:
+            self.imgui_rapid_menu()
+
         if self.interface_mode == InterfaceMode.TRANSFORM:
             self.imgui_transforms()
+
+        self.imgui_mpx_info()
 
         # Upper stats in tinder mode
         if self.switch_mode == SWITCH_MODE_TINDER:
@@ -2749,7 +2771,7 @@ class ModernSlideShower(mglw.WindowConfig):
             else:
                 bg_color = (.2, .2, .2)
             imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, bg_color[0], bg_color[1], bg_color[2])
-            imgui.slider_float("", self.levels_borders[column][row_number], 0, [1, 10][wide], '%.2f', [1, 3][wide])
+            imgui.slider_float("", self.levels_borders[column][row_number], 0, [1, 10][wide], '%.2f', [0, 32][wide])
             imgui.pop_style_color()
             imgui.next_column()
 
@@ -2828,6 +2850,54 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.imgui_show_info_window(info_text, "Image info", next_bottom)
         # self.next_message_top += 10
+
+    def imgui_rapid_menu(self):
+        self.imgui_style.alpha = .8
+        grid_element_size = self.imgui_io.display_size.y // 12
+        imgui.set_next_window_size(grid_element_size * 3.5, grid_element_size * 3.5)
+        imgui.set_next_window_position(self.imgui_io.display_size.x * .99, self.imgui_io.display_size.y // 2, 1, pivot_x=1, pivot_y=.5)
+        imgui.begin("Quick actions", True, CENRAL_WND_FLAGS)
+        imgui.columns(3)
+
+        for i in range(9):
+            imgui.button("Action " + str(i), width=grid_element_size, height=grid_element_size)
+            imgui.next_column()
+        imgui.end()
+
+        # imgui.set_next_window_size(200, 200)
+        # imgui.begin("Grid Window")
+        #
+        # # Loop through 9 text elements and place them in a 3x3 grid
+        # for i in range(9):
+        #     if i % 3 != 0:
+        #         imgui.same_line()
+        #     imgui.text("Text Element " + str(i))
+        #
+        # # End the window
+        # imgui.end()
+        # window_width, window_height = 200, 200
+        # imgui.set_next_window_size(window_width, window_height)
+        # imgui.begin("Grid Window")
+        #
+        # # Calculate the size of each text element
+        # element_width = window_width / 3 - imgui.get_style().item_spacing.x
+        # element_height = window_height / 3 - imgui.get_style().item_spacing.y
+        #
+        # # Loop through 9 text elements and place them in a 3x3 grid
+        # for i in range(9):
+        #     if i % 3 != 0:
+        #         imgui.same_line()
+        #     # imgui.push_style_var(imgui.STYLE_ITEM_SPACING, (0, element_height))
+        #     imgui.button("Text Element " + str(i), width=element_width, height=element_height)
+        #
+        # # End the window
+        # imgui.end()
+
+        # imgui.set_next_window_position(self.imgui_io.display_size.x, next_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+        # imgui.set_next_window_size(0, 0)
+        #
+        # imgui.begin("Image tranformations", True, SIDE_WND_FLAGS)
+        return
 
     def imgui_mandelbrot(self):
         if self.show_image_info:
@@ -2943,13 +3013,13 @@ class ModernSlideShower(mglw.WindowConfig):
 
         push_bg_color(0, 1)
         imgui.push_item_width(130)
-        imgui.slider_float("Scale whole image", self.resize_xy * 100, 10, 1000, '%.2f', 6.66)
+        imgui.slider_float("Scale whole image", self.resize_xy * 100, 10, 1000, '%.2f', 32)
         imgui.pop_style_color()
         push_bg_color(3, 1)
-        imgui.slider_float("Scale width", self.resize_x * 100, 10, 1000, '%.2f', 6.66)
+        imgui.slider_float("Scale width", self.resize_x * 100, 10, 1000, '%.2f', 32)
         imgui.pop_style_color()
         push_bg_color(3, 1)
-        imgui.slider_float("Scale height", self.resize_y * 100, 10, 1000, '%.2f', 6.66)
+        imgui.slider_float("Scale height", self.resize_y * 100, 10, 1000, '%.2f', 32)
         imgui.pop_style_color()
         previous_message_top_r = next_message_top_r
         next_message_top_r += imgui.get_window_height()
@@ -3031,6 +3101,179 @@ class ModernSlideShower(mglw.WindowConfig):
         imgui.pop_style_color()
         imgui.pop_style_color()
         imgui.end()
+
+    def imgui_mpx_info(self):
+        next_message_top_r = 10
+        pos_x = self.imgui_io.display_size.x
+
+        # def push_bg_color(border_id, transform_mode):
+        #     if border_id == self.crop_borders_active - 1 and self.transform_mode == transform_mode:
+        #         r = .7
+        #     else:
+        #         r = 0.2
+        #     imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, r, .2, .2)
+
+        # imgui.set_next_window_position(pos_x, next_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+        # imgui.set_next_window_size(0, 0)
+
+        # imgui.begin("Image size", True, SIDE_WND_FLAGS)
+        # imgui.text("Image size")
+        # self.imgui_style.alpha = .8
+        # imgui.set_window_font_scale(1.6)
+        # next_message_top_r += imgui.get_window_height()
+        # imgui.end()
+
+        imgui.set_next_window_position(pos_x, next_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+
+        # bg_color = 1  # if self.transform_mode == 1 else 0.5
+        imgui.push_style_color(imgui.COLOR_BORDER, .5, .5, .5, .1)
+        imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, .1, .2, .2, .6)
+        # imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, 1, .2, .2)
+
+        imgui.begin("Img size", True, SIDE_WND_FLAGS)
+        self.imgui_style.alpha = .7
+        imgui.text("Size")
+        next_message_top_r += imgui.get_window_height()
+
+        # new_texture_size = Point((self.pic_screen_borders[2] - self.pic_screen_borders[0]) / self.pic_zoom,
+        #                          (self.pic_screen_borders[3] - self.pic_screen_borders[1]) / self.pic_zoom)
+        # new_image_width = self.current_texture.width - int(self.crop_borders[0]) - int(self.crop_borders[1])
+        # new_image_width *= self.resize_xy * self.resize_x
+        # new_image_height = self.current_texture.height - int(self.crop_borders[2]) - int(self.crop_borders[3])
+        # new_image_height *= self.resize_xy * self.resize_y
+        # im_mp_2 = self.current_texture.width * self.current_texture.height / 1000000
+        # im_mp_3 = int(new_image_width) * int(new_image_height) / 1000000
+        # im_mp_3 = int(new_texture_size.x) * int(new_texture_size.y) / 1000000
+        im_mp_1 = self.image_original_size.x * self.image_original_size.y / 100000
+        size_value = restrict(int(math.log10(im_mp_1) * 30), 0, 100)
+        imgui.push_style_color(imgui.COLOR_SLIDER_GRAB, 1 - size_value / 100, size_value / 100, .2)
+        imgui.set_window_font_scale(1)
+        imgui.text(f"W: {self.image_original_size.x}")
+        imgui.text(f"H: {self.image_original_size.y}")
+        imgui.text(f"{im_mp_1 / 10:.{2 if im_mp_1 < 100 else 1}f} mp")
+        # imgui.text(f"size_value {size_value:d}")
+        imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 50)
+        imgui.v_slider_int("", 50, 160, size_value, 0, 100, "")
+
+        # imgui.begin("Vertical Slider")
+        # imgui.end()
+
+        # imgui.text("Current image size: " + f"{self.current_texture.width} x {self.current_texture.height}")
+        # imgui.text(f"Current image size: {im_mp_2:.2f} megapixels")
+        # imgui.text("New image size: " + f"{int(new_texture_size.x)} x {int(new_texture_size.y)}")
+        # imgui.text(f"New image size: {im_mp_3:.2f} megapixels")
+
+        imgui.pop_style_var()
+        imgui.pop_style_color()
+        imgui.pop_style_color()
+        imgui.pop_style_color()
+        imgui.end()
+
+        # bg_color = 1 if self.transform_mode == 1 else 0.5
+        # imgui.push_style_color(imgui.COLOR_BORDER, bg_color, bg_color, bg_color, bg_color)
+        # imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, .2, .2, .2 + .1 * bg_color, bg_color)
+        #
+        # imgui.set_next_window_position(pos_x, next_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+        # imgui.set_next_window_bg_alpha(.8)
+        # imgui.begin("Resize window", True, SIDE_WND_FLAGS)
+        # self.imgui_style.alpha = .2 + .6 * self.levels_enabled * (self.transform_mode == 1)
+        #
+        # imgui.pop_style_color()
+        # imgui.pop_style_color()
+        #
+        # imgui.text("")
+        # imgui.text("Resize image")
+        #
+        # push_bg_color(0, 1)
+        # imgui.push_item_width(130)
+        # imgui.slider_float("Scale whole image", self.resize_xy * 100, 10, 1000, '%.2f', 6.66)
+        # imgui.pop_style_color()
+        # push_bg_color(3, 1)
+        # imgui.slider_float("Scale width", self.resize_x * 100, 10, 1000, '%.2f', 6.66)
+        # imgui.pop_style_color()
+        # push_bg_color(3, 1)
+        # imgui.slider_float("Scale height", self.resize_y * 100, 10, 1000, '%.2f', 6.66)
+        # imgui.pop_style_color()
+        # previous_message_top_r = next_message_top_r
+        # next_message_top_r += imgui.get_window_height()
+        # imgui.end()
+        #
+        # imgui.set_next_window_position(pos_x, previous_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+        #
+        # bg_color = 1 if self.transform_mode == 1 else 0.5
+        # imgui.push_style_color(imgui.COLOR_BORDER, bg_color, bg_color, bg_color, bg_color)
+        # imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, .5, .5, bg_color, bg_color)
+        #
+        # imgui.begin("Resize label", True, SIDE_WND_FLAGS)
+        # imgui.text("Image resize")
+        # imgui.pop_style_color()
+        # imgui.pop_style_color()
+        # imgui.end()
+        #
+        # bg_color = 1 if self.transform_mode == 2 else 0.5
+        # imgui.push_style_color(imgui.COLOR_BORDER, bg_color, bg_color, bg_color, bg_color)
+        # imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, .2, .2, .2 + .1 * bg_color, bg_color)
+        #
+        # imgui.set_next_window_position(pos_x, next_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+        # imgui.set_next_window_bg_alpha(.8)
+        # imgui.begin("Crop image", True, SIDE_WND_FLAGS)
+        # self.imgui_style.alpha = .2 + .6 * self.levels_enabled * (self.transform_mode == 2)
+        #
+        # imgui.pop_style_color()
+        # imgui.pop_style_color()
+        #
+        # imgui.text("")
+        # imgui.text("Crop from borders")
+        #
+        # push_bg_color(3, 2)
+        # imgui.slider_int("Top", self.crop_borders[3], 0, self.current_texture.size[1], '%d')
+        # imgui.pop_style_color()
+        # imgui.columns(2)
+        # push_bg_color(0, 2)
+        # imgui.slider_int("Left", self.crop_borders[0], 0, self.current_texture.size[0], '%d')
+        # imgui.pop_style_color()
+        # imgui.next_column()
+        # push_bg_color(2, 2)
+        # imgui.slider_int("Right", self.crop_borders[2], 0, self.current_texture.size[0], '%d')
+        # imgui.pop_style_color()
+        # imgui.columns(1)
+        # push_bg_color(1, 2)
+        # imgui.slider_int("Bottom", self.crop_borders[1], 0, self.current_texture.size[1], '%d')
+        # imgui.pop_style_color()
+        # imgui.text("")
+        # push_bg_color(4, 2)
+        # imgui.slider_float("Angle", -self.pic_angle, -360, 360, '%.2f')
+        # imgui.pop_style_color()
+        #
+        # previous_message_top_r = next_message_top_r
+        # next_message_top_r += imgui.get_window_height()
+        # imgui.end()
+        #
+        # imgui.set_next_window_position(pos_x, previous_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+        # bg_color = 1 if self.transform_mode == 2 else 0.5
+        # imgui.push_style_color(imgui.COLOR_BORDER, bg_color, bg_color, bg_color, bg_color)
+        # imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, .5, .5, bg_color, bg_color)
+        # imgui.begin("Crop_label", True, SIDE_WND_FLAGS)
+        # imgui.text("Crop & rotate")
+        # imgui.set_window_font_scale(1.2)
+        # imgui.pop_style_color()
+        # imgui.pop_style_color()
+        # imgui.end()
+        #
+        # imgui.set_next_window_position(pos_x, next_message_top_r, 1, pivot_x=1, pivot_y=0.0)
+        # bg_color = 1 if self.transform_mode == 3 else 0.5
+        # imgui.set_next_window_bg_alpha(.2 + .6 * bg_color)
+        # self.imgui_style.alpha = .8
+        # imgui.push_style_color(imgui.COLOR_BORDER, bg_color, bg_color, bg_color, bg_color)
+        # imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, .5, .5, bg_color, bg_color)
+        #
+        # imgui.begin("Navigation", True, SIDE_WND_FLAGS)
+        # imgui.text("Navigation")
+        # imgui.set_window_font_scale(1.2)
+        # next_message_top_r += imgui.get_window_height()
+        # imgui.pop_style_color()
+        # imgui.pop_style_color()
+        # imgui.end()
 
     def imgui_popdb(self):
         for item in self.pop_db:
@@ -3124,6 +3367,8 @@ def main_loop() -> None:
     window.config = ModernSlideShower(ctx=window.ctx, wnd=window, timer=timer)
     window.config.exclude_plus_minus = exclude_plus_minus
     window.config.random_folder_mode = random_folder_mode
+    if "-scan_all_files" in sys.argv:
+        window.config.scan_all_files = True
 
     timer.start()
     timer.next_frame()
