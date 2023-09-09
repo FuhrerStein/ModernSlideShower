@@ -37,6 +37,7 @@ low-power mandelbrot-like mode, also shown when no images left.
 
 -- Implemented functionality and changes --
 
+rapid menu with few commands shown on left mouse down
 in thumbs mode minimal stack to be 3 thumbs in width
 image precaching
 in case of deep unzoom, show thumbnails

@@ -1,6 +1,7 @@
 import pyglet
 import moderngl_window
 
+
 class Configs:
     HIDE_BORDERS = "Hide borders"
     TRANSITION_DURATION = "Transition duration"
@@ -130,6 +131,14 @@ class Actions:
     CLOSE_PROGRAM = 100
 
 
+random_image_actions = (
+    Actions.IMAGE_RANDOM_FILE,
+    Actions.IMAGE_RANDOM_DIR_RANDOM_FILE,
+    Actions.IMAGE_RANDOM_DIR_FIRST_FILE,
+    Actions.IMAGE_RANDOM_IN_CURRENT_DIR,
+    Actions.IMAGE_RANDOM_UNSEEN_FILE
+)
+
 # MAIN_MENU structure:
 # name, shortcut label, checkbox condition, action
 MAIN_MENU = (
@@ -162,6 +171,17 @@ MAIN_MENU = (
     ('Keyboard shortcuts', 'F1, H', lambda x: x.central_message_showing, None, Actions.CENTRAL_MESSAGE_TOGGLE),
     ('Quit', 'Esc', None, None, Actions.CLOSE_PROGRAM),
 )
+
+rapid_menu_actions = (('Circle\n mode', Actions.SWITCH_MODE_CIRCLES),
+                      ('Compare\n mode', Actions.SWITCH_MODE_COMPARE),
+                      ('Tinder\n mode', Actions.SWITCH_MODE_TINDER),
+                      ('Adjust\nlevels', InterfaceMode.LEVELS),
+                      ('Zoom\nto fit', Actions.PIC_ZOOM_FIT),
+                      ('Slideshow\n toggle', Actions.AUTO_FLIP_TOGGLE),
+                      ('Rotate\n left', Actions.PIC_ROTATE_LEFT),
+                      ('   Save \n rotation\nlosslessly', Actions.APPLY_ROTATION_90),
+                      ('Rotate\nright', Actions.PIC_ROTATE_RIGHT)
+                      )
 
 # KEYBOARD_SHORTCUTS structure (dict):
 # (action, interface_mode, ctrl, shift, alt, key): action_code
@@ -211,12 +231,6 @@ KEYBOARD_SHORTCUTS = {
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_MULTIPLY): Actions.PIC_ZOOM_FIT,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_DIVIDE): Actions.PIC_ZOOM_100,
 
-
-    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.ACTION_GENERAL_RIGHT,
-    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.ACTION_GENERAL_LEFT,
-    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.ACTION_GENERAL_UP,
-    # (prs, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.ACTION_GENERAL_DOWN,
-
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.KEYBOARD_RIGHT_PRESS,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.KEYBOARD_LEFT_PRESS,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.KEYBOARD_UP_PRESS,
@@ -229,10 +243,6 @@ KEYBOARD_SHORTCUTS = {
 
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.SPACE): Actions.ACTION_SPACE_PRESS,
     (rls, InterfaceMode.GENERAL, False, False, False, KEY.SPACE): Actions.ACTION_SPACE_RELEASE,
-    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.RIGHT): Actions.KEYBOARD_FLIPPING_OFF,
-    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.LEFT): Actions.KEYBOARD_FLIPPING_OFF,
-    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.UP): Actions.KEYBOARD_FLIPPING_OFF,
-    # (rls, InterfaceMode.GENERAL, False, False, False, KEY.DOWN): Actions.KEYBOARD_FLIPPING_OFF,
 
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_ADD): Actions.KEYBOARD_MOVEMENT_ZOOM_IN_ON,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.EQUAL): Actions.KEYBOARD_MOVEMENT_ZOOM_IN_ON,
