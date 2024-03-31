@@ -130,6 +130,16 @@ class Actions:
 
     CLOSE_PROGRAM = 100
 
+    KEYBOARD_PRESS_1 = 111
+    KEYBOARD_PRESS_2 = 112
+    KEYBOARD_PRESS_3 = 113
+    KEYBOARD_PRESS_4 = 114
+    KEYBOARD_PRESS_5 = 115
+    KEYBOARD_PRESS_6 = 116
+    KEYBOARD_PRESS_7 = 117
+    KEYBOARD_PRESS_8 = 118
+    KEYBOARD_PRESS_9 = 119
+
 
 random_image_actions = (
     Actions.IMAGE_RANDOM_FILE,
@@ -213,6 +223,15 @@ KEYBOARD_SHORTCUTS = {
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.F4): Actions.LIST_SAVE_WITH_COMPRESS,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.F9): Actions.FILE_SAVE_WITH_SUFFIX,
     (prs, InterfaceMode.GENERAL, False, False, False, KEY.F12): Actions.FILE_SAVE_AND_REPLACE,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_1): Actions.KEYBOARD_PRESS_1,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_2): Actions.KEYBOARD_PRESS_2,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_3): Actions.KEYBOARD_PRESS_3,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_4): Actions.KEYBOARD_PRESS_4,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_5): Actions.KEYBOARD_PRESS_5,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_6): Actions.KEYBOARD_PRESS_6,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_7): Actions.KEYBOARD_PRESS_7,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_8): Actions.KEYBOARD_PRESS_8,
+    (prs, InterfaceMode.GENERAL, False, False, False, KEY.NUM_9): Actions.KEYBOARD_PRESS_9,
 
     (prs, InterfaceMode.GENERAL, True, False, False, KEY.R): Actions.REVERT_IMAGE,
 
@@ -356,6 +375,7 @@ POP_MESSAGE_TEXT = [
     "Tinder mode",  # 22
     "Settings saved",  # 23
     "No images in folder. Press Esc to close. Switching to Mandelbrot mode in {show_time} seconds",  # 24
+    "Jump to {jump_percent}% of list",  # 25
 ]
 
 
