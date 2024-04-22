@@ -27,7 +27,7 @@ from natsort import natsorted
 from StaticData import *
 import imgui
 
-FULL_SCREEN_ID = 0  # Select here ID of screen to use in fullscreen mode.
+FULL_SCREEN_ID = 1  # Select here ID of screen to use in fullscreen mode.
 BUTTON_STICKING_TIME = 0.3  # After passing this time button acts as temporary.
 IMAGE_UN_UNSEE_TIME = 0.2  # Time needed to consider image as been seen
 
@@ -223,16 +223,12 @@ class ModernSlideShower(mglw.WindowConfig):
     image_index = 0
     new_image_index = 0
     previous_image_index = 0
-    # dir_index = 0
-    # images_in_folder = 0
-    # index_in_folder = 0
     dir_list = []
     file_list = []
     dir_to_file = []
     file_to_dir = []
     image_ratings = []
     image_categories = []
-    # tinder_stats = np.zeros(3, dtype=int)
     tinder_stats_d = {-1: 0, 0: 0, 1: 0}
     tinder_last_choice = 0
     small_zoom = False
@@ -392,7 +388,8 @@ class ModernSlideShower(mglw.WindowConfig):
 
     pop_db = []
 
-    levels_borders = [[0.] * 4, [1.] * 4, [1.] * 4, [0.] * 4, [1.] * 4, [1.] * 4]
+    # levels_borders = [[0.] * 4, [1.] * 4, [1.] * 4, [0.] * 4, [1.] * 4, [1.] * 4]
+    levels_borders = [[1. if i % 3 else 0.] * 4 for i in range(6)]
     levels_borders_previous = []
 
     levels_enabled = True
@@ -728,9 +725,6 @@ class ModernSlideShower(mglw.WindowConfig):
     def scan_file(self, filename):
         if filename.lower().endswith(ALL_FILE_TYPES) or self.scan_all_files:
             file_dir = os.path.dirname(filename)
-            # last_dir = ""
-            # if self.dir_list:
-            #     last_dir = self.dir_list[-1]
             if self.dir_list and file_dir == self.dir_list[-1]:
                 self.file_to_dir.append(self.dir_count - 1)
                 self.dir_to_file[-1][1] += 1
@@ -2884,14 +2878,15 @@ class ModernSlideShower(mglw.WindowConfig):
             "File   name: " + file_name,
             "Folder name: " + folder_name,
             folder_path_text,
-            f"Folder #: {dir_index + 1:d} of {self.dir_count:d}",
-            f"Image in folder: {index_in_folder:d} of {images_in_folder:d}",
-            f"Image in all list: {self.image_index + 1:d} of {self.image_count:d} ({percent_in_list:.2f}%)",
         ]
         if self.image_index < len(self.image_ratings):
             image_rating = self.image_ratings[self.image_index]
             if image_rating:
                 info_text.append(f"Image rating: {int(image_rating) / 1000000:.3f}%")
+        else:
+            info_text += [f"Folder #: {dir_index + 1:d} of {self.dir_count:d}",
+                          f"Image in folder: {index_in_folder:d} of {images_in_folder:d}",
+                          f"Image in all list: {self.image_index + 1:d} of {self.image_count:d} ({percent_in_list:.2f}%)", ]
         next_bottom = self.imgui_show_info_window(info_text, "Path info", self.imgui_io.display_size.y - 10)
 
         # if self.show_image_info == 2:
@@ -3174,11 +3169,8 @@ class ModernSlideShower(mglw.WindowConfig):
 
         imgui.progress_bar(size_value / 100, (column_w, 20), mpix_text)
 
-
         # text_centered("Size:")
         next_message_top_r += imgui.get_window_height()
-
-
 
         text_centered(f"{self.image_original_size.x} x {self.image_original_size.y}")
         # text_centered(f"{self.image_original_size.y}")
@@ -3192,6 +3184,7 @@ class ModernSlideShower(mglw.WindowConfig):
         imgui.pop_style_color()
         imgui.pop_style_color()
         imgui.end()
+
     #
     # def imgui_mpx_info(self):
     #     def text_centered(text):
