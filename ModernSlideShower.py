@@ -27,7 +27,7 @@ from natsort import natsorted
 from StaticData import *
 import imgui
 
-FULL_SCREEN_ID = 1  # Select here ID of screen to use in fullscreen mode.
+FULL_SCREEN_ID = 0  # Select here ID of screen to use in fullscreen mode.
 BUTTON_STICKING_TIME = 0.3  # After passing this time button acts as temporary.
 IMAGE_UN_UNSEE_TIME = 0.2  # Time needed to consider image as been seen
 
@@ -2878,6 +2878,7 @@ class ModernSlideShower(mglw.WindowConfig):
             "File   name: " + file_name,
             "Folder name: " + folder_name,
             folder_path_text,
+            f"Image in all list: {self.image_index + 1:d} of {self.image_count:d} ({percent_in_list:.2f}%)",
         ]
         if self.image_index < len(self.image_ratings):
             image_rating = self.image_ratings[self.image_index]
@@ -2885,19 +2886,16 @@ class ModernSlideShower(mglw.WindowConfig):
                 info_text.append(f"Image rating: {int(image_rating) / 1000000:.3f}%")
         else:
             info_text += [f"Folder #: {dir_index + 1:d} of {self.dir_count:d}",
-                          f"Image in folder: {index_in_folder:d} of {images_in_folder:d}",
-                          f"Image in all list: {self.image_index + 1:d} of {self.image_count:d} ({percent_in_list:.2f}%)", ]
+                          f"Image in folder: {index_in_folder:d} of {images_in_folder:d}",]
         next_bottom = self.imgui_show_info_window(info_text, "Path info", self.imgui_io.display_size.y - 10)
 
-        # if self.show_image_info == 2:
         im_mp = self.image_original_size.x * self.image_original_size.y / 1000000
         info_text = [
             "File size: " + format_bytes_3(self.current_image_file_size),
             f"Image size: {self.image_original_size.x} x {self.image_original_size.y}",
             f"Image size: {im_mp:.2f} megapixels",
             f"Current zoom: {self.pic_zoom * 100:.1f}%",
-            f"Visual rotation angle: {self.pic_angle:.2f}°",
-        ]
+            f"Visual rotation angle: {self.pic_angle:.2f}°", ]
 
         self.imgui_show_info_window(info_text, "Image info", next_bottom)
 
@@ -3147,7 +3145,6 @@ class ModernSlideShower(mglw.WindowConfig):
     def imgui_mpx_info(self):
         def text_centered(text):
             offset_x = (column_w - imgui.calc_text_size(text).x - 1) // 2
-            # imgui_cursor = imgui.get_cursor_pos_x()
             imgui.set_cursor_pos_x(imgui.get_cursor_pos_x() + offset_x)
             imgui.text(text)
 
@@ -3169,60 +3166,14 @@ class ModernSlideShower(mglw.WindowConfig):
 
         imgui.progress_bar(size_value / 100, (column_w, 20), mpix_text)
 
-        # text_centered("Size:")
         next_message_top_r += imgui.get_window_height()
 
         text_centered(f"{self.image_original_size.x} x {self.image_original_size.y}")
-        # text_centered(f"{self.image_original_size.y}")
 
-        # text_centered(f"{im_mp_1 / 10:.{2 if im_mp_1 < 100 else 1}f}")
-
-        # imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, column_w)
-
-        # imgui.pop_style_var()
         imgui.pop_style_color()
         imgui.pop_style_color()
         imgui.pop_style_color()
         imgui.end()
-
-    #
-    # def imgui_mpx_info(self):
-    #     def text_centered(text):
-    #         offset_x = (column_w - imgui.calc_text_size(text).x - 1) // 2
-    #         # imgui_cursor = imgui.get_cursor_pos_x()
-    #         imgui.set_cursor_pos_x(imgui.get_cursor_pos_x() + offset_x)
-    #         imgui.text(text)
-    #
-    #     next_message_top_r = 50
-    #     column_w = 40
-    #     pos_x = self.imgui_io.display_size.x
-    #
-    #     imgui.set_next_window_position(pos_x, next_message_top_r, 1, pivot_x=1, pivot_y=0.0)
-    #
-    #     imgui.push_style_color(imgui.COLOR_BORDER, .5, .5, .5, .1)
-    #     imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, .1, .2, .2, .6)
-    #
-    #     imgui.begin("Img size", True, SIDE_WND_FLAGS)
-    #     self.imgui_style.alpha = .7
-    #     text_centered("Size:")
-    #     next_message_top_r += imgui.get_window_height()
-    #
-    #     im_mp_1 = self.image_original_size.x * self.image_original_size.y / 100000
-    #     size_value = restrict(int(math.log10(im_mp_1) * 30), 0, 100)
-    #     imgui.push_style_color(imgui.COLOR_SLIDER_GRAB, 1 - size_value / 100, size_value / 100, .2)
-    #     imgui.set_window_font_scale(1)
-    #     text_centered(f"{self.image_original_size.x}")
-    #     text_centered(f"{self.image_original_size.y}")
-    #     imgui.progress_bar(size_value / 100, (column_w, 20), "Mpix:")
-    #     text_centered(f"{im_mp_1 / 10:.{2 if im_mp_1 < 100 else 1}f}")
-    #
-    #     imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, column_w)
-    #
-    #     imgui.pop_style_var()
-    #     imgui.pop_style_color()
-    #     imgui.pop_style_color()
-    #     imgui.pop_style_color()
-    #     imgui.end()
 
     def imgui_popdb(self):
         for item in self.pop_db:
