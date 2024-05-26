@@ -27,7 +27,7 @@ from natsort import natsorted
 from StaticData import *
 import imgui
 
-FULL_SCREEN_ID = 0  # Select here ID of screen to use in fullscreen mode.
+FULL_SCREEN_ID = 1  # Select here ID of screen to use in fullscreen mode.
 BUTTON_STICKING_TIME = 0.3  # After passing this time button acts as temporary.
 IMAGE_UN_UNSEE_TIME = 0.2  # Time needed to consider image as been seen
 
@@ -1020,9 +1020,9 @@ class ModernSlideShower(mglw.WindowConfig):
 
         if self.image_index == 0 and not self.interface_mode == InterfaceMode.MANDELBROT:
             self.unschedule_pop_message(8)
-        elif current_folder != self.last_image_folder and not self.image_ratings:
+        elif current_folder != self.last_image_folder and not len(self.image_ratings):
             self.schedule_pop_message(12, 5, dir_index=current_folder + 1, dir_count=self.dir_count)
-            self.pic_pos_current += self.current_texture.width / 3
+            self.pic_pos_current += self.current_texture.width / 15
         else:
             self.unschedule_pop_message(7)
 
@@ -1283,7 +1283,7 @@ class ModernSlideShower(mglw.WindowConfig):
     def random_image(self, jump_type=Actions.IMAGE_RANDOM_UNSEEN_FILE):
         if jump_type == Actions.IMAGE_RANDOM_FILE:
             self.new_image_index = random.randrange(self.image_count)
-        if jump_type == Actions.IMAGE_RANDOM_UNSEEN_FILE:
+        elif jump_type == Actions.IMAGE_RANDOM_UNSEEN_FILE:
             list_of_not_seen = np.invert(self.seen_images).nonzero()[0]
             if list_of_not_seen.any():
                 self.new_image_index = random.choice(list_of_not_seen)
