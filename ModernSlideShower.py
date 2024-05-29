@@ -140,6 +140,12 @@ def reorient_image(im):
     return im
 
 
+def load_settings():
+    if os.path.isfile("settings.json"):
+        with open("settings.json", 'r') as f:
+            return json.load(f)
+
+
 def load_image(path_target, do_thumb=False):
     def draw_dummy():
         im_object = Image.new("RGB", (256, 256), (20, 50, 80))
@@ -517,7 +523,8 @@ class ModernSlideShower(mglw.WindowConfig):
         self.empty_level_borders()
         self.empty_level_borders()
         self.find_jpegtran()
-        self.load_settings()
+        # self.load_settings()
+        self.configs = load_settings()
 
     def post_init(self):
         self.window_size = self.wnd.size
@@ -872,15 +879,17 @@ class ModernSlideShower(mglw.WindowConfig):
         else:
             return EMPTY_IMAGE_LIST
 
-    def save_current_settings(self):
+    def save_settings(self, sett=None):
+        if not sett:
+            sett = self.configs
         with open("settings.json", 'w') as f:
-            json.dump(self.configs, f)
+            json.dump(sett, f)
         self.schedule_pop_message(23)
 
-    def load_settings(self):
-        if os.path.isfile("settings.json"):
-            with open("settings.json", 'r') as f:
-                self.configs = json.load(f)
+    # def load_settings(self):
+        # if os.path.isfile("settings.json"):
+        #     with open("settings.json", 'r') as f:
+        #         self.configs = json.load(f)
 
     def release_texture(self, texture):
         if self.image_texture == texture:
@@ -2030,7 +2039,7 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.interface_mode == InterfaceMode.SETTINGS:
             if self.pressed_mouse == 1:
                 if self.setting_active == len(self.configs):
-                    self.save_current_settings()
+                    self.save_settings()
                 elif self.setting_active == len(self.configs) + 1:
                     self.switch_interface_mode(InterfaceMode.GENERAL)
 
@@ -2052,6 +2061,9 @@ class ModernSlideShower(mglw.WindowConfig):
         elif action == Actions.WINDOW_GOTO_NEXT_SCREEN:
             self.use_screen_id = (self.use_screen_id + 1) % len(self.screens)
             self.wnd._window.set_fullscreen(True, screen=self.screens[self.use_screen_id])
+            current_settings = load_settings()
+            current_settings[Configs.FULL_SCREEN_ID] = self.use_screen_id
+            self.save_settings(current_settings)
 
         elif action == Actions.WINDOW_SWITCH_FULLSCREEN:
             self.wnd.fullscreen = not self.wnd.fullscreen
@@ -3255,11 +3267,17 @@ def main_loop() -> None:
     window = mglw.get_local_window_cls('pyglet')(vsync=enable_vsync)
     display = pyglet.canvas.get_display()
     screens = display.get_screens()
-    use_screen_id = FULL_SCREEN_ID if FULL_SCREEN_ID < len(screens) else 0
+    load_config = load_settings()
+    if Configs.FULL_SCREEN_ID in load_config.keys():
+        load_screen_id = load_config[Configs.FULL_SCREEN_ID]
+        if load_screen_id >= len(screens):
+            load_screen_id = 0
+    else:
+        load_screen_id = 0
 
     if start_fullscreen:
         window.mouse_exclusivity = True
-        window._window.set_fullscreen(True, screen=screens[use_screen_id])
+        window._window.set_fullscreen(True, screen=screens[load_screen_id])
 
     window.print_context_info()
     mglw.activate_context(window=window)
@@ -3281,7 +3299,7 @@ def main_loop() -> None:
     window.config.image_queue_data = image_queue_data
     window.config.image_loader = image_loader
     window.config.screens = screens
-    window.config.use_screen_id = use_screen_id
+    window.config.use_screen_id = load_screen_id
 
     while not window.is_closing:
         window.render()

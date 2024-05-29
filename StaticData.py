@@ -8,6 +8,7 @@ class Configs:
     INTER_BLUR = "Transition Blur"
     STARTING_ZOOM_FACTOR = "Initial zoom"
     PIXEL_SIZE = "Pixel squareness"
+    FULL_SCREEN_ID = "Full screen monitor ID"
     i = [
         HIDE_BORDERS,
         TRANSITION_DURATION,
