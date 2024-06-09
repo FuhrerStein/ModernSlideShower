@@ -1,30 +1,30 @@
 import pyglet
 import moderngl_window
+from enum import Enum
 
-
-class Configs:
-    HIDE_BORDERS = "Hide borders"
-    TRANSITION_DURATION = "Transition duration"
-    INTER_BLUR = "Transition Blur"
-    STARTING_ZOOM_FACTOR = "Initial zoom"
-    PIXEL_SIZE = "Pixel squareness"
-    FULL_SCREEN_ID = "Full screen monitor ID"
-    i = [
-        HIDE_BORDERS,
-        TRANSITION_DURATION,
-        INTER_BLUR,
-        STARTING_ZOOM_FACTOR,
-        PIXEL_SIZE,
-        "Save",
-        "Close"
-    ]
+# class Configs:
+#     HIDE_BORDERS = "Hide borders"
+#     TRANSITION_DURATION = "Transition duration"
+#     INTER_BLUR = "Transition Blur"
+#     STARTING_ZOOM_FACTOR = "Initial zoom"
+#     PIXEL_SIZE = "Pixel squareness"
+#     FULL_SCREEN_ID = "Full screen monitor ID"
+#     i = [
+#         HIDE_BORDERS,
+#         TRANSITION_DURATION,
+#         INTER_BLUR,
+#         STARTING_ZOOM_FACTOR,
+#         PIXEL_SIZE,
+#         "Save",
+#         "Close"
+#     ]
 
 
 LEVEL_BORDER_NAMES = ['lvl_i_min', 'lvl_i_max', 'lvl_gamma',
                       'lvl_o_min', 'lvl_o_max', 'saturation']
 
 
-class InterfaceMode:
+class InterfaceMode(Enum):
     GENERAL = 50
     MENU = 51
     SETTINGS = 52

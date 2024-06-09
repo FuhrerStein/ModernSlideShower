@@ -1,4 +1,5 @@
 -- Planned functionality and changes --
+store in-program database in numpy arrays rather than in lists
 show compression and decompression progress when saving/loading lists
 program icon
 filelist position indicator
@@ -7,7 +8,6 @@ interface to adjust curves
 filtering image with glsl code
 support for large images by splitting them into smaller subtextures
 seam resizing with glsl
-set settings change speeds in setting settings
 add 3-4 user-editable parameters to mandelbrot_mode
 add other julia sets in mandelbrot_mode
 render mandelbrot to subtextures for reuse between frames (caching for mandelbrot texels)
@@ -16,15 +16,13 @@ avoid swapping textures every frame
 "repeat last levels" single-key operation
 rewrite help for other modes: levels, transform, mandelbrot
 transition settings for next image, next folder, and first image in list
-do not switch immediately at edges in compare mode
-in compare mode move splitter faster near center of the screen
 in thumbs mode show which photos are accepted and rejected
 in thumbs mode limit horizontal movement
 animate thumbnails rearrangement when unzooming
 
 advanced ultra-zoom algorithm
 
-Scroll mode. Show all images in one scroll with equal width and equal zoom
+Scroll mode. Show all images in one scroll with equal width.
 Zoom mode. Switch to next image with extreme zoom on previous. Also in slideshow.
 
 read-only mode
@@ -37,6 +35,8 @@ low-power mandelbrot-like mode, also shown when no images left.
 
 -- Implemented functionality and changes --
 
+in compare mode move splitter faster near center of the screen
+save settings in TOML
 rapid menu with few commands shown on left mouse down
 in thumbs mode minimal stack to be 3 thumbs in width
 image precaching

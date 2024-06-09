@@ -16,16 +16,18 @@ from scipy.ndimage import gaussian_filter
 import numpy as np
 import math
 import os
-import sys
+# import sys
 import random
 import collections
-import json
 import mpmath
+import tomllib
+import tomli_w
 import multiprocessing
 from mpmath import mp
 from natsort import natsorted
 from StaticData import *
 import imgui
+from enum import Enum
 
 FULL_SCREEN_ID = 1  # Select here ID of screen to use in fullscreen mode.
 BUTTON_STICKING_TIME = 0.3  # After passing this time button acts as temporary.
@@ -140,10 +142,10 @@ def reorient_image(im):
     return im
 
 
-def load_settings():
-    if os.path.isfile("settings.json"):
-        with open("settings.json", 'r') as f:
-            return json.load(f)
+# def load_settings():
+#     if os.path.isfile("settings.json"):
+#         with open("settings.json", 'r') as f:
+#             return json.load(f)
 
 
 def load_image(path_target, do_thumb=False):
@@ -204,6 +206,87 @@ def init_image_loader(do_thumb=False):
     return thumb_queue_tasks, thumb_queue_data, thumb_loader
 
 
+class Configs(Enum):
+    HIDE_BORDERS = "hide_borders"
+    TRANSITION_DURATION = "transition_duration"
+    INTER_BLUR = "transition_blur"
+    STARTING_ZOOM_FACTOR = "initial_zoom"
+    PIXEL_SIZE = "pixel_squareness"
+    FULL_SCREEN_ID = "full_screen_monitor_id"
+
+    Values = (HIDE_BORDERS,
+              TRANSITION_DURATION,
+              INTER_BLUR,
+              STARTING_ZOOM_FACTOR,
+              PIXEL_SIZE,
+              FULL_SCREEN_ID,
+              )
+
+    DESCRIPTIONS = {
+        HIDE_BORDERS: "Hide image borders",
+        TRANSITION_DURATION: "Duration of transition between images",
+        INTER_BLUR: "Blur during transition",
+        STARTING_ZOOM_FACTOR: "Zoom of newly shown image",
+        PIXEL_SIZE: "Pixel shape in case of extreme zoom",
+        FULL_SCREEN_ID: "ID of the full screen monitor",
+    }
+
+    FORMATS = {
+        HIDE_BORDERS: (0, 1000, '%.1f', 0),
+        TRANSITION_DURATION: (0.01, 10, '%.3f', 0),
+        INTER_BLUR: (0, 1000, '%.1f', 0),
+        STARTING_ZOOM_FACTOR: (0, 5, '%.3f', 0),
+        PIXEL_SIZE: (0, 100, '%.2f', 32),
+        FULL_SCREEN_ID: (0, 3, '%.0f', 0),
+    }
+
+
+class Config:
+    def __init__(self, config_file='settings.toml'):
+        self.config_file = config_file
+        self.defaults = {
+            Configs.HIDE_BORDERS.value: 100,
+            Configs.TRANSITION_DURATION.value: 0.75,
+            Configs.INTER_BLUR.value: 30.0,
+            Configs.STARTING_ZOOM_FACTOR.value: 0.98,
+            Configs.PIXEL_SIZE.value: 0,
+            Configs.FULL_SCREEN_ID.value: 1,
+        }
+        self.settings = self.defaults.copy()
+        self.load_settings()
+
+    def load_settings(self):
+        if os.path.isfile(self.config_file):
+            with open(self.config_file, 'rb') as f:
+                loaded_settings = tomllib.load(f)
+                for key, value in loaded_settings.items():
+                    if key in self.defaults:
+                        self.settings[key] = self.validate_setting(key, value)
+
+    def save_settings(self):
+        with open(self.config_file, 'wb') as f:
+            tomli_w.dump(self.settings, f)
+
+    def validate_setting(self, key, value):
+        min_val, max_val, _, _ = Configs.FORMATS.value[key]
+        if isinstance(value, (int, float)):
+            if value < min_val:
+                return min_val
+            elif value > max_val:
+                return max_val
+            else:
+                return value
+        else:
+            return self.defaults[key]
+
+    def get(self, key):
+        return self.settings.get(key.value, self.defaults.get(key.value))
+
+    def set(self, key, value):
+        if key.value in self.defaults:
+            self.settings[key.value] = self.validate_setting(key.value, value)
+
+
 class ModernSlideShower(mglw.WindowConfig):
     gl_version = (3, 3)
     title = "ModernSlideShower"
@@ -254,8 +337,8 @@ class ModernSlideShower(mglw.WindowConfig):
     preloads_for_image_requested = -1
     image_cache = {}
 
-    random_folder_mode = False
-    exclude_plus_minus = False
+    # random_folder_mode = False
+    # exclude_plus_minus = False
 
     seen_images = np.zeros(0)
     current_image_is_unseen = True
@@ -325,7 +408,7 @@ class ModernSlideShower(mglw.WindowConfig):
     interface_mode = InterfaceMode.GENERAL
     switch_mode = SWITCH_MODE_CIRCLES
 
-    scan_all_files = False
+    # scan_all_files = False
     split_line = 0
 
     right_click_start = 0
@@ -358,29 +441,29 @@ class ModernSlideShower(mglw.WindowConfig):
     mandel_auto_complexity_target = 0.
     mandel_auto_complexity_fill_target = 620
 
-    configs = {
-        Configs.HIDE_BORDERS: 100,
-        Configs.TRANSITION_DURATION: .75,
-        Configs.INTER_BLUR: 30.,
-        Configs.STARTING_ZOOM_FACTOR: .98,
-        Configs.PIXEL_SIZE: 0
-    }
+    # configs = {
+    #     Configs.HIDE_BORDERS: 100,
+    #     Configs.TRANSITION_DURATION: .75,
+    #     Configs.INTER_BLUR: 30.,
+    #     Configs.STARTING_ZOOM_FACTOR: .98,
+    #     Configs.PIXEL_SIZE: 0
+    # }
 
-    config_descriptions = {
-        Configs.HIDE_BORDERS: "Hide image borders",
-        Configs.TRANSITION_DURATION: "Duration of transition between images",
-        Configs.INTER_BLUR: "Blur during transition",
-        Configs.STARTING_ZOOM_FACTOR: "Zoom of newly shown image",
-        Configs.PIXEL_SIZE: "Pixel shape in case of extreme zoom",
-    }
+    # config_descriptions = {
+    #     Configs.HIDE_BORDERS: "Hide image borders",
+    #     Configs.TRANSITION_DURATION: "Duration of transition between images",
+    #     Configs.INTER_BLUR: "Blur during transition",
+    #     Configs.STARTING_ZOOM_FACTOR: "Zoom of newly shown image",
+    #     Configs.PIXEL_SIZE: "Pixel shape in case of extreme zoom",
+    # }
 
-    config_formats = {
-        Configs.HIDE_BORDERS: (0, 1000, '%.1f', 2),
-        Configs.TRANSITION_DURATION: (0.01, 10, '%.3f', 2),
-        Configs.INTER_BLUR: (0, 1000, '%.1f', 4),
-        Configs.STARTING_ZOOM_FACTOR: (0, 5, '%.3f', 4),
-        Configs.PIXEL_SIZE: (0, 100, '%.1f', 4),
-    }
+    # config_formats = {
+    #     Configs.HIDE_BORDERS: (0, 1000, '%.1f', 2),
+    #     Configs.TRANSITION_DURATION: (0.01, 10, '%.3f', 2),
+    #     Configs.INTER_BLUR: (0, 1000, '%.1f', 4),
+    #     Configs.STARTING_ZOOM_FACTOR: (0, 5, '%.3f', 4),
+    #     Configs.PIXEL_SIZE: (0, 100, '%.1f', 4),
+    # }
 
     last_key_press_time = 0
     setting_active = 0
@@ -425,8 +508,8 @@ class ModernSlideShower(mglw.WindowConfig):
     current_image_file_size = 0
 
     central_message_showing = False
-    parser = argparse.ArgumentParser(description="ModernSlideShower", allow_abbrev=False)
-    program_args = dict
+    # parser = argparse.ArgumentParser(description="ModernSlideShower", allow_abbrev=False)
+    # program_args = dict
     entered_digits = ""
     digit_flop_time = 0
 
@@ -453,9 +536,8 @@ class ModernSlideShower(mglw.WindowConfig):
         Image.MAX_IMAGE_PIXELS = 10000 * 10000 * 3
         random.seed()
 
-        self.parser.add_argument("--folder_name", help="Specify the folder name")
-        # self.program_args = self.parser.parse_args()
-        self.program_args, unknown_args = self.parser.parse_known_args()
+        # parser.add_argument("--folder_name", help="Specify the folder name")
+        # self.program_args, unknown_args = parser.parse_known_args()
 
         def sub_program(program_name: str):
             return mglw.opengl.program.ShaderSource(program_name.upper(), program_name.lower(),
@@ -467,7 +549,7 @@ class ModernSlideShower(mglw.WindowConfig):
                     program_text = fd.read()
             return program_text
 
-        if "-old_gl" in sys.argv:
+        if program_args.old_gl:
             self.use_old_gl = True
         else:
             try:
@@ -524,18 +606,24 @@ class ModernSlideShower(mglw.WindowConfig):
         self.empty_level_borders()
         self.find_jpegtran()
         # self.load_settings()
-        self.configs = load_settings()
+        # loaded_settings = load_settings()
+        # if loaded_settings:
+        #     self.configs = load_settings()
 
     def post_init(self):
         self.window_size = self.wnd.size
-        if "-r" in sys.argv or "-F5" in sys.argv:
+        if program_args.random_image:
             self.start_with_random_image = Actions.IMAGE_RANDOM_FILE
-        if "-F6" in sys.argv:
-            self.start_with_random_image = Actions.IMAGE_RANDOM_IN_CURRENT_DIR
-        if "-F7" in sys.argv:
+        if program_args.random_dir:
             self.start_with_random_image = Actions.IMAGE_RANDOM_DIR_FIRST_FILE
-        if "-F8" in sys.argv:
-            self.start_with_random_image = Actions.IMAGE_RANDOM_DIR_RANDOM_FILE
+        # if "-r" in sys.argv or "-F5" in sys.argv:
+        #     self.start_with_random_image = Actions.IMAGE_RANDOM_FILE
+        # if "-F6" in sys.argv:
+        #     self.start_with_random_image = Actions.IMAGE_RANDOM_IN_CURRENT_DIR
+        # if "-F7" in sys.argv:
+        #     self.start_with_random_image = Actions.IMAGE_RANDOM_DIR_FIRST_FILE
+        # if "-F8" in sys.argv:
+        #     self.start_with_random_image = Actions.IMAGE_RANDOM_DIR_RANDOM_FILE
         self.get_images()
 
         if self.wnd.is_closing:
@@ -549,17 +637,18 @@ class ModernSlideShower(mglw.WindowConfig):
 
         self.image_categories = np.zeros(self.image_count, dtype=int)
         self.seen_images = np.zeros(self.image_count, dtype=bool)
-        # self.tinder_stats[1] = self.image_count
         self.tinder_stats_d[0] = self.image_count
         self.find_common_path()
         if self.start_with_random_image:
+            if self.start_with_random_image is True:
+                self.start_with_random_image = Actions.IMAGE_RANDOM_FILE
             self.random_image(self.start_with_random_image)
         else:
             self.load_image()
             self.unschedule_pop_message(7)
             self.unschedule_pop_message(8)
         self.transition_stage = 1
-        if "-tinder_mode" in sys.argv:
+        if program_args.tinder_mode:
             self.switch_swithing_mode(SWITCH_MODE_TINDER)
 
         # --- Temp part. Fill thumbs base
@@ -638,8 +727,8 @@ class ModernSlideShower(mglw.WindowConfig):
     def get_images(self):
         file_arguments = []
         dir_arguments = []
-        if len(sys.argv) > 1:
-            for argument in sys.argv[1:]:
+        if program_args.path:
+            for argument in program_args.path:
                 if os.path.isdir(argument.rstrip('\\"')):
                     dir_arguments.append(os.path.abspath(argument.rstrip('\\"')))
                 if os.path.isfile(argument):
@@ -649,7 +738,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 [self.scan_directory(directory) for directory in dir_arguments]
             if len(file_arguments):
                 if len(dir_arguments) == 0 and len(file_arguments) == 1:
-                    if file_arguments[0].lower().endswith(ALL_FILE_TYPES) or self.scan_all_files:
+                    if file_arguments[0].lower().endswith(ALL_FILE_TYPES) or program_args.ignore_extention:
                         self.scan_directory(os.path.dirname(file_arguments[0]), file_arguments[0])
                     else:
                         self.scan_file(file_arguments[0])
@@ -671,9 +760,8 @@ class ModernSlideShower(mglw.WindowConfig):
         parent_path = self.dir_list[0]
         if self.common_path == parent_path:
             self.common_path = os.path.dirname(self.common_path)
-        # folders_in_path = self.common_path.split(os.path.sep)
-        if self.program_args.folder_name:
-            search_folder = os.path.sep + self.program_args.folder_name + os.path.sep
+        if program_args.base_folder_name:
+            search_folder = os.path.sep + program_args.base_folder_name + os.path.sep
             found_match = self.common_path.find(search_folder)
             print(f"found_match: {found_match}")
             if found_match >= 0:
@@ -683,10 +771,6 @@ class ModernSlideShower(mglw.WindowConfig):
 
         print(f"Common path: {self.common_path}")
         print(f"Parent path: {self.parent_path}")
-        # print(found_match + len(search_folder))
-        # if self.program_args.folder_name in folders_in_path:
-        #
-        #     print(self.common_path.find(os.path.sep + self.program_args.folder_name + os.path.sep))
 
     def scan_directory(self, dirname, look_for_file=None):
         print("Searching for images in", dirname)
@@ -704,13 +788,13 @@ class ModernSlideShower(mglw.WindowConfig):
             file_count = 0
             this_dir_file_list = []
             first_file = self.image_count
-            if self.exclude_plus_minus:
+            if program_args.exclude_sorted:
                 if "\\++" in root or "\\--" in root:
                     continue
             for f in files:
                 if self.wnd.is_closing:
                     return
-                if f.lower().endswith(ALL_FILE_TYPES) or self.scan_all_files:
+                if f.lower().endswith(ALL_FILE_TYPES) or program_args.ignore_extention:
                     img_path = os.path.join(root, f)
                     self.image_count += 1
                     file_count += 1
@@ -730,7 +814,7 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.file_list += natsorted(this_dir_file_list)
 
     def scan_file(self, filename):
-        if filename.lower().endswith(ALL_FILE_TYPES) or self.scan_all_files:
+        if filename.lower().endswith(ALL_FILE_TYPES) or program_args.ignore_extention:
             file_dir = os.path.dirname(filename)
             if self.dir_list and file_dir == self.dir_list[-1]:
                 self.file_to_dir.append(self.dir_count - 1)
@@ -745,8 +829,12 @@ class ModernSlideShower(mglw.WindowConfig):
 
         elif filename.lower().endswith(LIST_FILE_TYPE):
             self.load_list_file(filename)
+            if "_r" in os.path.basename(filename):
+                self.start_with_random_image = self.start_with_random_image or True
         elif filename.lower().endswith(PLAIN_LIST_FILE_TYPE):
             self.load_plain_list_file(filename)
+            if "_r" in os.path.basename(filename):
+                self.start_with_random_image = self.start_with_random_image or True
 
     def load_plain_list_file(self, filename):
         print("Opening plain list", filename)
@@ -817,8 +905,6 @@ class ModernSlideShower(mglw.WindowConfig):
         self.dir_to_file.append([current_dir_file_start, current_dir_file_count])
         self.dir_list.append(current_dir)
         self.dir_count += 1
-        if "_r" in os.path.basename(filename):
-            self.start_with_random_image = True
 
     def save_list_file(self, compress=True):
         if not os.path.isdir(SAVE_FOLDER):
@@ -879,12 +965,13 @@ class ModernSlideShower(mglw.WindowConfig):
         else:
             return EMPTY_IMAGE_LIST
 
-    def save_settings(self, sett=None):
-        if not sett:
-            sett = self.configs
-        with open("settings.json", 'w') as f:
-            json.dump(sett, f)
-        self.schedule_pop_message(23)
+    # def save_settings(self, sett=None):
+    #     if not sett:
+    #         sett = self.configs
+    #     with open("settings.json", 'w') as f:
+    #         json.dump(sett, f)
+    #     config.save_settings()
+    #     self.schedule_pop_message(23)
 
     # def load_settings(self):
         # if os.path.isfile("settings.json"):
@@ -1188,7 +1275,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.transition_stage = 0
             return
 
-        transition_time = 1 / min(self.previous_image_duration * .7, self.configs[Configs.TRANSITION_DURATION])
+        transition_time = 1 / min(self.previous_image_duration * .7, config.get(Configs.TRANSITION_DURATION))
         transition_step = (1.2 - self.transition_stage) * transition_time * self.last_frame_duration
         to_target_stage = abs(self.mouse_move_cumulative) / 100 - self.transition_stage
         if to_target_stage > 0:
@@ -1289,33 +1376,59 @@ class ModernSlideShower(mglw.WindowConfig):
         self.new_image_index = self.dir_to_file[dir_index][0]
         self.load_image()
 
+    # def random_image_old(self, jump_type=Actions.IMAGE_RANDOM_UNSEEN_FILE):
+    #     if jump_type == Actions.IMAGE_RANDOM_FILE:
+    #         self.new_image_index = random.randrange(self.image_count)
+    #     elif jump_type == Actions.IMAGE_RANDOM_UNSEEN_FILE:
+    #         list_of_not_seen = np.invert(self.seen_images).nonzero()[0]
+    #         if list_of_not_seen.any():
+    #             self.new_image_index = random.choice(list_of_not_seen)
+    #         else:
+    #             self.new_image_index = random.randrange(self.image_count)
+    #     elif jump_type == Actions.IMAGE_RANDOM_IN_CURRENT_DIR:
+    #         dir_first_img, dir_img_count = self.dir_to_file[self.file_to_dir[self.image_index]]
+    #         self.new_image_index = dir_first_img + random.randrange(dir_img_count)
+    #     elif jump_type == Actions.IMAGE_RANDOM_DIR_FIRST_FILE:
+    #         dir_index = random.randrange(self.dir_count)
+    #         self.new_image_index = self.dir_to_file[dir_index][0]
+    #     elif jump_type == Actions.IMAGE_RANDOM_DIR_RANDOM_FILE:
+    #         dir_first_img, dir_img_count = self.dir_to_file[random.randrange(self.dir_count)]
+    #         self.new_image_index = dir_first_img + random.randrange(dir_img_count)
+    #
+    #     self.image_index = self.new_image_index
+    #
+    #     self.load_image()
+    #     self.unschedule_pop_message(8)
+
+    def rand_new_image_index(self, jump_type):
+        match jump_type:
+            case Actions.IMAGE_RANDOM_UNSEEN_FILE:
+                list_of_not_seen = np.invert(self.seen_images).nonzero()[0]
+                if list_of_not_seen.any():
+                    return random.choice(list_of_not_seen)
+                else:
+                    return random.randrange(self.image_count)
+            case Actions.IMAGE_RANDOM_DIR_FIRST_FILE:
+                dir_index = random.randrange(self.dir_count)
+                return self.dir_to_file[dir_index][0]
+            case Actions.IMAGE_RANDOM_IN_CURRENT_DIR:
+                dir_first_img, dir_img_count = self.dir_to_file[self.file_to_dir[self.image_index]]
+                return dir_first_img + random.randrange(dir_img_count)
+            case Actions.IMAGE_RANDOM_DIR_RANDOM_FILE:
+                dir_first_img, dir_img_count = self.dir_to_file[random.randrange(self.dir_count)]
+                return dir_first_img + random.randrange(dir_img_count)
+            case _:
+                return random.randrange(self.image_count)
+
     def random_image(self, jump_type=Actions.IMAGE_RANDOM_UNSEEN_FILE):
-        if jump_type == Actions.IMAGE_RANDOM_FILE:
-            self.new_image_index = random.randrange(self.image_count)
-        elif jump_type == Actions.IMAGE_RANDOM_UNSEEN_FILE:
-            list_of_not_seen = np.invert(self.seen_images).nonzero()[0]
-            if list_of_not_seen.any():
-                self.new_image_index = random.choice(list_of_not_seen)
-            else:
-                self.new_image_index = random.randrange(self.image_count)
-        elif jump_type == Actions.IMAGE_RANDOM_IN_CURRENT_DIR:
-            dir_first_img, dir_img_count = self.dir_to_file[self.file_to_dir[self.image_index]]
-            self.new_image_index = dir_first_img + random.randrange(dir_img_count)
-        elif jump_type == Actions.IMAGE_RANDOM_DIR_FIRST_FILE:
-            dir_index = random.randrange(self.dir_count)
-            self.new_image_index = self.dir_to_file[dir_index][0]
-        elif jump_type == Actions.IMAGE_RANDOM_DIR_RANDOM_FILE:
-            dir_first_img, dir_img_count = self.dir_to_file[random.randrange(self.dir_count)]
-            self.new_image_index = dir_first_img + random.randrange(dir_img_count)
-
+        self.new_image_index = self.rand_new_image_index(jump_type)
         self.image_index = self.new_image_index
-
         self.load_image()
         self.unschedule_pop_message(8)
 
-    def first_image(self):
-        self.new_image_index = 0
-        self.load_image()
+    # def first_image(self):
+    #     self.new_image_index = 0
+    #     self.load_image()
 
     def apply_transform(self):
         if self.resize_xy == self.resize_x == self.resize_y == 1 and self.pic_angle == 0:
@@ -1422,7 +1535,8 @@ class ModernSlideShower(mglw.WindowConfig):
             self.unschedule_pop_message(2)
             self.unschedule_pop_message(4)
             self.program_id = 1 - self.program_id
-            self.pic_zoom = self.pic_zoom_future * self.configs[Configs.STARTING_ZOOM_FACTOR]
+            # self.pic_zoom = self.pic_zoom_future * self.configs[Configs.STARTING_ZOOM_FACTOR]
+            self.pic_zoom = self.pic_zoom_future * config.get(Configs.STARTING_ZOOM_FACTOR)
             self.pic_pos_current = mp.mpc(0)
             self.pic_pos_future = mp.mpc(0)
             self.pic_move_speed = mp.mpc(0)
@@ -1548,9 +1662,9 @@ class ModernSlideShower(mglw.WindowConfig):
                                                             self.levels_enabled
         self.gl_program_pic[self.program_id]['count_histograms'] = self.interface_mode == InterfaceMode.LEVELS
         self.gl_program_pic[self.program_id]['show_amount'] = self.transition_stage
-        self.gl_program_pic[self.program_id]['hide_borders'] = self.configs[Configs.HIDE_BORDERS]
-        self.gl_program_pic[self.program_id]['inter_blur'] = self.configs[Configs.INTER_BLUR]
-        self.gl_program_pic[self.program_id]['pixel_size'] = self.configs[Configs.PIXEL_SIZE]
+        self.gl_program_pic[self.program_id]['hide_borders'] = config.get(Configs.HIDE_BORDERS)
+        self.gl_program_pic[self.program_id]['inter_blur'] = config.get(Configs.INTER_BLUR)
+        self.gl_program_pic[self.program_id]['pixel_size'] = config.get(Configs.PIXEL_SIZE)
         self.gl_program_pic[self.program_id]['transition_center'] = self.transition_center
         self.gl_program_pic[self.program_id]['resize_xy'] = self.resize_xy - 1
         self.gl_program_pic[self.program_id]['resize_x'] = self.resize_x - 1
@@ -1574,7 +1688,7 @@ class ModernSlideShower(mglw.WindowConfig):
         blur_target = 0
         blur_now = self.gl_program_pic[self.program_id]['transparency'].value
         if self.interface_mode == InterfaceMode.SETTINGS:
-            if Configs.i[self.setting_active] == Configs.INTER_BLUR:
+            if list(Configs)[self.setting_active] == Configs.INTER_BLUR:
                 blur_target = .5
             self.gl_program_pic[self.program_id]['transparency'] = mix(blur_now, blur_target, 0.05)
         else:
@@ -1644,13 +1758,13 @@ class ModernSlideShower(mglw.WindowConfig):
         if toggle and self.interface_mode == new_mode:
             new_mode = InterfaceMode.GENERAL
 
-        self.unschedule_pop_message(self.interface_mode + 14 - 50)
+        self.unschedule_pop_message(self.interface_mode.value + 14 - 50)
 
         self.interface_mode = new_mode
         self.mouse_buffer *= 0
         self.run_reduce_flipping_speed = 0
         if new_mode != InterfaceMode.GENERAL:
-            self.schedule_pop_message(self.interface_mode + 14 - 50, 8000, True)
+            self.schedule_pop_message(self.interface_mode.value + 14 - 50, 8000, True)
 
         if new_mode == InterfaceMode.MANDELBROT:
             self.prepare_to_mandelbrot()
@@ -1740,9 +1854,9 @@ class ModernSlideShower(mglw.WindowConfig):
             if self.tinder_stats_d[0] != 0:
                 self.new_image_index = self.next_unmarked_image(self.image_index)
                 directory_changed = self.file_to_dir[self.new_image_index] != self.file_to_dir[self.image_index]
-                if self.random_folder_mode and directory_changed:
-                    random_index = random.choice(self.dir_to_file)[0]
-                    self.new_image_index = self.next_unmarked_image(random_index)
+                # if self.random_folder_mode and directory_changed:
+                #     random_index = random.choice(self.dir_to_file)[0]
+                #     self.new_image_index = self.next_unmarked_image(random_index)
                 self.load_image()
             else:
                 self.run_flip_once = 1
@@ -1873,7 +1987,7 @@ class ModernSlideShower(mglw.WindowConfig):
         elif self.interface_mode == InterfaceMode.SETTINGS:
             if abs(self.mouse_buffer[1]) > 150:
                 self.setting_active += 1 if self.mouse_buffer[1] > 0 else -1
-                self.setting_active = self.setting_active % (len(self.configs) + 2)
+                self.setting_active = self.setting_active % (len(config.settings) + 2)
                 self.mouse_buffer *= 0
 
         elif self.interface_mode == InterfaceMode.LEVELS:
@@ -1934,13 +2048,23 @@ class ModernSlideShower(mglw.WindowConfig):
             if self.menu_bottom > 1:
                 self.imgui.mouse_press_event(20, self.mouse_buffer[1], 1)
 
+        # elif self.interface_mode == InterfaceMode.SETTINGS:
+        #     config_current = self.configs[Configs.i[self.setting_active]]
+        #     config_min = self.config_formats[Configs.i[self.setting_active]][0]
+        #     config_max = self.config_formats[Configs.i[self.setting_active]][1]
+        #     config_new = config_current * (1 - amount) - amount / 1000 * config_max
+        #     config_new = restrict(config_new, config_min, config_max)
+        #     self.configs[Configs.i[self.setting_active]] = config_new
+
         elif self.interface_mode == InterfaceMode.SETTINGS:
-            config_current = self.configs[Configs.i[self.setting_active]]
-            config_min = self.config_formats[Configs.i[self.setting_active]][0]
-            config_max = self.config_formats[Configs.i[self.setting_active]][1]
+            if self.setting_active > len(config.settings) - 1:
+                return
+            active_setting = list(Configs)[self.setting_active]
+            config_current = config.get(active_setting)
+            config_min, config_max = Configs.FORMATS.value[active_setting.value][:2]
             config_new = config_current * (1 - amount) - amount / 1000 * config_max
             config_new = restrict(config_new, config_min, config_max)
-            self.configs[Configs.i[self.setting_active]] = config_new
+            config.set(active_setting, config_new)
 
         elif self.interface_mode == InterfaceMode.LEVELS:
             self.adjust_levels(amount)
@@ -2038,9 +2162,11 @@ class ModernSlideShower(mglw.WindowConfig):
 
         if self.interface_mode == InterfaceMode.SETTINGS:
             if self.pressed_mouse == 1:
-                if self.setting_active == len(self.configs):
-                    self.save_settings()
-                elif self.setting_active == len(self.configs) + 1:
+                if self.setting_active == len(config.settings):
+                    print("Saving")
+                    config.save_settings()
+                    self.schedule_pop_message(23)
+                elif self.setting_active == len(config.settings) + 1:
                     self.switch_interface_mode(InterfaceMode.GENERAL)
 
         self.pressed_mouse = self.pressed_mouse & ~button_code
@@ -2061,9 +2187,12 @@ class ModernSlideShower(mglw.WindowConfig):
         elif action == Actions.WINDOW_GOTO_NEXT_SCREEN:
             self.use_screen_id = (self.use_screen_id + 1) % len(self.screens)
             self.wnd._window.set_fullscreen(True, screen=self.screens[self.use_screen_id])
-            current_settings = load_settings()
-            current_settings[Configs.FULL_SCREEN_ID] = self.use_screen_id
-            self.save_settings(current_settings)
+            # current_settings = load_settings()
+            # current_settings[Configs.FULL_SCREEN_ID] = self.use_screen_id
+            config.set(Configs.FULL_SCREEN_ID, self.use_screen_id)
+            config.save_settings()
+            # print(str(self.average_frame_time))
+            # self.save_settings(current_settings)
 
         elif action == Actions.WINDOW_SWITCH_FULLSCREEN:
             self.wnd.fullscreen = not self.wnd.fullscreen
@@ -2172,7 +2301,10 @@ class ModernSlideShower(mglw.WindowConfig):
         elif action == Actions.CLOSE_PROGRAM:
             self.wnd.close()
 
-        elif InterfaceMode.GENERAL <= action <= InterfaceMode.MANDELBROT:
+        # elif InterfaceMode.GENERAL <= action <= InterfaceMode.MANDELBROT:
+        #     self.switch_interface_mode(action)
+        #
+        elif action in list(InterfaceMode):
             self.switch_interface_mode(action)
 
         elif action == Actions.KEYBOARD_MOVEMENT_ZOOM_IN_ON:
@@ -2553,11 +2685,15 @@ class ModernSlideShower(mglw.WindowConfig):
                 self.mouse_move_cumulative = 0
 
     def render_compare(self):
+        def tanh_adjusted(x, k=6):
+            return 0.5 * (1 + math.tanh(k * (x - 0.5)))
+
         self.program_id = 1 - self.program_id
         self.update_position()
         self.gl_program_compare['line_position'] = 1 - self.split_line
         self.gl_program_pic[self.program_id]['half_picture'] = self.split_line - 1 * (self.mouse_move_cumulative < 0)
-        self.split_line = mix(self.split_line, self.mouse_move_cumulative / 100 % 1, .2)
+        split_curve = (self.mouse_move_cumulative / 100 % 1)
+        self.split_line = mix(self.split_line, tanh_adjusted(split_curve), .2)
         self.current_texture_old.use(5)
         self.picture_vao.render(self.gl_program_pic[self.program_id], vertices=1)
         self.program_id = 1 - self.program_id
@@ -2678,24 +2814,22 @@ class ModernSlideShower(mglw.WindowConfig):
 
     def imgui_settings(self):
         pos_x, pos_y = self.imgui_io.display_size.x * .5, self.imgui_io.display_size.y * .5
+        red_colors = [.2] * (len(config.settings) + 2)
+        red_colors[self.setting_active] = .7
         imgui.set_next_window_position(pos_x, pos_y, 1, pivot_x=.5, pivot_y=0.5)
         imgui.set_next_window_bg_alpha(.9)
         imgui.begin("Settings", False, CENRAL_WND_FLAGS)
 
-        for key in self.configs.keys():
-            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, .2 + .5 * (Configs.i[self.setting_active] == key), .2,
-                                   .2)
-            imgui.slider_float(self.config_descriptions[key], self.configs[key],
-                               self.config_formats[key][0],
-                               self.config_formats[key][1],
-                               self.config_formats[key][2],
-                               self.config_formats[key][3])
+        for key_id, key in enumerate(Configs.Values.value):
+            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, red_colors.pop(0), .2, .2)
+            imgui.slider_float(Configs.DESCRIPTIONS.value[key], config.settings[key], *Configs.FORMATS.value[key])
             imgui.pop_style_color()
+
         imgui.dummy(10, 10)
-        imgui.push_style_color(imgui.COLOR_BUTTON, .2 + .5 * (self.setting_active == len(self.configs)), .2, .2)
+        imgui.push_style_color(imgui.COLOR_BUTTON, red_colors.pop(0), .2, .2)
         imgui.small_button("Save settings as default")
         imgui.pop_style_color()
-        imgui.push_style_color(imgui.COLOR_BUTTON, .2 + .5 * (self.setting_active == len(self.configs) + 1), .2, .2)
+        imgui.push_style_color(imgui.COLOR_BUTTON, red_colors.pop(0), .2, .2)
         imgui.small_button("Close")
         imgui.pop_style_color()
         imgui.end()
@@ -3256,26 +3390,22 @@ class ModernSlideShower(mglw.WindowConfig):
 
 def main_loop() -> None:
     # mglw.setup_basic_logging(20)  # logging.INFO
-    start_fullscreen = False if "-f" in sys.argv else True
+    # start_fullscreen = False if "-f" in sys.argv else True
     # exclude_plus_minus = "-exclude_plus_minus" in sys.argv
     # random_folder_mode = "-random_folder_mode" in sys.argv
 
-    enable_vsync = True
+    # enable_vsync = True
     # window = mglw.get_local_window_cls('pyglet')(fullscreen=start_fullscreen, vsync=enable_vsync)
     thumb_queue_tasks, thumb_queue_data, thumb_loader = init_image_loader(do_thumb=True)
     image_queue_tasks, image_queue_data, image_loader = init_image_loader()
-    window = mglw.get_local_window_cls('pyglet')(vsync=enable_vsync)
+    window = mglw.get_local_window_cls('pyglet')(vsync=True)
     display = pyglet.canvas.get_display()
     screens = display.get_screens()
-    load_config = load_settings()
-    if Configs.FULL_SCREEN_ID in load_config.keys():
-        load_screen_id = load_config[Configs.FULL_SCREEN_ID]
-        if load_screen_id >= len(screens):
-            load_screen_id = 0
-    else:
-        load_screen_id = 0
+    # load_screen_id = int(config.get(Configs.FULL_SCREEN_ID))
+    # load_screen_id = 0 if load_screen_id >= len(screens) else load_screen_id
+    load_screen_id = min(int(config.get(Configs.FULL_SCREEN_ID)), len(screens) - 1)
 
-    if start_fullscreen:
+    if program_args.full_screen:
         window.mouse_exclusivity = True
         window._window.set_fullscreen(True, screen=screens[load_screen_id])
 
@@ -3283,10 +3413,10 @@ def main_loop() -> None:
     mglw.activate_context(window=window)
     timer = mglw.timers.clock.Timer()
     window.config = ModernSlideShower(ctx=window.ctx, wnd=window, timer=timer)
-    window.config.exclude_plus_minus = "-exclude_plus_minus" in sys.argv
-    window.config.random_folder_mode = "-random_folder_mode" in sys.argv
-    if "-scan_all_files" in sys.argv:
-        window.config.scan_all_files = True
+    # window.config.exclude_plus_minus = "-exclude_plus_minus" in sys.argv
+    # window.config.random_folder_mode = "-random_folder_mode" in sys.argv
+    # if "-scan_all_files" in sys.argv:
+    #     window.config.scan_all_files = True
 
     timer.start()
     timer.next_frame()
@@ -3314,5 +3444,25 @@ def main_loop() -> None:
         )
 
 
+def setup_parser():
+    parser.add_argument("--base_folder_name", help="Specify folder name of base folder in path")
+    parser.add_argument("-f", "--full_screen", action="store_true", help="Start in full screen mode")
+    parser.add_argument("-r", "-F5", "--random_image", action="store_true", help="Start with random image")
+    parser.add_argument("-rd", "-F7", "--random_dir", action="store_true",
+                        help="Start with first image in random subdirectory")
+    parser.add_argument("--old_gl", action="store_true", help="Use old opengl for compatibility")
+    parser.add_argument("-t", "--tinder_mode", action="store_true", help="Open viewer in accept/reject mode")
+    parser.add_argument("-e", "--exclude_sorted", action="store_true", help="Do not process directories named ++ or --")
+    parser.add_argument("-i", "--ignore_extention", action="store_true",
+                        help="Try to open every file regardless of its extension, scan all files.")
+    parser.add_argument("path", nargs='*', help="Path(s) to file(s) and/or directory(s) to show")
+
+
 if __name__ == '__main__':
+    config = Config()
+    parser = argparse.ArgumentParser(description="ModernSlideShower, a smooth image viewer", allow_abbrev=False)
+    setup_parser()
+    program_args, unknown_args = parser.parse_known_args()
+    print("Known arguments:\n", program_args)
+    print("Unknown arguments:\n", unknown_args)
     main_loop()
