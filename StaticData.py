@@ -1,6 +1,7 @@
 import pyglet
 import moderngl_window
 from enum import Enum
+import imgui
 
 # class Configs:
 #     HIDE_BORDERS = "Hide borders"
@@ -19,6 +20,25 @@ from enum import Enum
 #         "Close"
 #     ]
 
+BUTTON_STICKING_TIME = 0.3  # After passing this time, button acts as temporary.
+IMAGE_UN_UNSEE_TIME = 0.2  # Time needed to consider image as been seen
+MANDEL_PREZOOM = 4e-3
+
+CENRAL_WND_FLAGS = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | \
+                   imgui.WINDOW_NO_INPUTS | imgui.WINDOW_NO_COLLAPSE
+SIDE_WND_FLAGS = CENRAL_WND_FLAGS | imgui.WINDOW_NO_TITLE_BAR
+
+LIST_FILE_TYPE = 'sldlist'
+PLAIN_LIST_FILE_TYPE = 'filelist'
+JPEGTRAN_EXE_PATH = "c:\\Soft\\libjpeg-turbo-gcc64\\bin"
+JPEGTRAN_EXE_FILE = "jpegtran.exe"
+JPEGTRAN_OPTIONS = ' -optimize -rotate {0} -trim -copy all -outfile "{1}" "{1}"'
+
+IMAGE_FILE_TYPES = ('jpg', 'png', 'jpeg', 'gif', 'tif', 'tiff', 'webp', 'avif')
+RAW_FILE_TYPES = ('nef', 'dng', 'arw')
+ALL_FILE_TYPES = IMAGE_FILE_TYPES + RAW_FILE_TYPES
+EMPTY_IMAGE_LIST = "Empty.jpg"
+SAVE_FOLDER = ".\\SaveFolder\\"
 
 LEVEL_BORDER_NAMES = ['lvl_i_min', 'lvl_i_max', 'lvl_gamma',
                       'lvl_o_min', 'lvl_o_max', 'saturation']
@@ -151,7 +171,7 @@ random_image_actions = (
 )
 
 # MAIN_MENU structure:
-# name, shortcut label, checkbox condition, action
+# name, shortcut label, checkbox condition, enabled condition, action
 MAIN_MENU = (
     ('Circle mode', '', lambda x: x.switch_mode == Actions.SWITCH_MODE_CIRCLES, None, Actions.SWITCH_MODE_CIRCLES),
     # ('Gesture mode', 'G', lambda x: x.switch_mode == SWITCH_MODE_GESTURES, None, Actions.SWITCH_MODE_GESTURES),
@@ -188,7 +208,7 @@ rapid_menu_actions = (('Circle\n mode', Actions.SWITCH_MODE_CIRCLES),
                       ('Tinder\n mode', Actions.SWITCH_MODE_TINDER),
                       ('Adjust\nlevels', InterfaceMode.LEVELS),
                       ('Zoom\nto fit', Actions.PIC_ZOOM_FIT),
-                      ('Slideshow\n toggle', Actions.AUTO_FLIP_TOGGLE),
+                      ('Crop,\nRotate,\nResize', InterfaceMode.TRANSFORM),
                       ('Rotate\n left', Actions.PIC_ROTATE_LEFT),
                       ('   Save \n rotation\nlosslessly', Actions.APPLY_ROTATION_90),
                       ('Rotate\nright', Actions.PIC_ROTATE_RIGHT)
@@ -424,7 +444,7 @@ No images found
 
 No loadable images found
 You may pass a directory as a first argument to this 
-script, or put this script in a directory with images.
+program, or put this program in a directory with images.
 Press H or F1 to close this window and to show help message.
 ''',
                    '''

@@ -1,5 +1,5 @@
 -- Planned functionality and changes --
-store in-program database in numpy arrays rather than in lists
+Reset, Apply, Apply&Save, and Cancel buttons in Levels and Transform modes
 show compression and decompression progress when saving/loading lists
 program icon
 filelist position indicator
@@ -27,6 +27,7 @@ Zoom mode. Switch to next image with extreme zoom on previous. Also in slideshow
 
 read-only mode
 levels: contrast regulation
+store in-program database in numpy arrays rather than in lists (debatable)
 Switch all db to pandas (bad idea - slow)
 low-power mandelbrot-like mode, also shown when no images left.
 
