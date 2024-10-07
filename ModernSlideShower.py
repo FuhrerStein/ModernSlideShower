@@ -1,33 +1,32 @@
+import argparse
+import collections
 import datetime
+import io
+import math
+import multiprocessing
+import os
+import random
 import shutil
+import tomllib
+
 import moderngl
 import moderngl_window as mglw
 import moderngl_window.context.base
 import moderngl_window.context.pyglet.keys
 import moderngl_window.meta
-import argparse
 import moderngl_window.timers.clock
-from moderngl_window.opengl import program, vao
-from moderngl_window.integrations.imgui import ModernglWindowRenderer
-import io
-import rawpy
-from PIL import Image, ImageDraw, ImageOps
-from scipy.ndimage import gaussian_filter
-import numpy as np
-import math
-import os
-# import sys
-import random
-import collections
 import mpmath
-import tomllib
+import numpy as np
+import rawpy
 import tomli_w
-import multiprocessing
+from PIL import Image, ImageDraw, ImageOps
+from moderngl_window.integrations.imgui import ModernglWindowRenderer
+from moderngl_window.opengl import program, vao
 from mpmath import mp
 from natsort import natsorted
+from scipy.ndimage import gaussian_filter
+
 from StaticData import *
-import imgui
-from enum import Enum
 
 Point = collections.namedtuple('Point', ['x', 'y'])
 
@@ -1256,8 +1255,8 @@ class ModernSlideShower(mglw.WindowConfig):
             self.transition_stage = 0
             return
 
-        transition_time = 1 / min(self.previous_image_duration * .7, config.get(Configs.TRANSITION_DURATION))
-        transition_step = (1.2 - self.transition_stage) * transition_time * self.last_frame_duration
+        transition_time = min(self.previous_image_duration * .7, config.get(Configs.TRANSITION_DURATION))
+        transition_step = (1.2 - self.transition_stage) * self.last_frame_duration / transition_time
         to_target_stage = abs(self.mouse_move_cumulative) / 100 - self.transition_stage
         if to_target_stage > 0:
             self.transition_stage += to_target_stage * self.last_frame_duration * 10
@@ -1440,7 +1439,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.current_texture = new_texture
         new_texture.use(5)
 
-        self.update_position()
+        self.update_gl_variables()
         self.switch_interface_mode(InterfaceMode.GENERAL)
 
     def apply_levels(self):
@@ -1528,7 +1527,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.resize_x = 1
             self.resize_y = 1
             self.crop_borders *= 0
-            self.transition_stage = -1
+            self.transition_stage = 0
             self.transition_center = (.3 + .4 * random.random(), .3 + .4 * random.random())
 
             self.gl_program_pic[self.program_id]['transparency'] = 0
@@ -1634,7 +1633,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_mandel[self.mandel_id]['mandel_x'] = tuple(vec4_pos_x)
         self.gl_program_mandel[self.mandel_id]['mandel_y'] = tuple(vec4_pos_y)
 
-    def update_position(self):
+    def update_gl_variables(self):
         displacement = (self.pic_pos_current.real, self.pic_pos_current.imag)
         self.gl_program_pic[self.program_id]['displacement'] = displacement
         self.gl_program_pic[self.program_id]['zoom_scale'] = self.pic_zoom
@@ -1658,14 +1657,12 @@ class ModernSlideShower(mglw.WindowConfig):
             self.gl_program_pic[self.program_id]['half_picture'] = self.split_line - 1 * (
                     self.mouse_move_cumulative > 0)
         else:
-            self.gl_program_pic[1 - self.program_id]['transparency'] = self.transition_stage
+            self.gl_program_pic[1 - self.program_id]['transparency'] = smootherstep_ease(self.transition_stage * 1.2)
             self.gl_program_pic[self.program_id]['half_picture'] = 0
 
         if self.switch_mode == SWITCH_MODE_TINDER and self.transition_stage < 1:
-            fading_pos = (self.pic_pos_fading.real +
-                          smootherstep_ease(self.transition_stage) * self.wnd.width / 3 * self.tinder_last_choice,
-                          self.pic_pos_fading.imag)
-            self.gl_program_pic[1 - self.program_id]['displacement'] = fading_pos
+            fade_move = smootherstep_ease(self.transition_stage * 1.1) * self.wnd.width / 3 * self.tinder_last_choice
+            self.gl_program_pic[1 - self.program_id]['displacement'] = fade_move, 0
 
         blur_target = 0
         blur_now = self.gl_program_pic[self.program_id]['transparency'].value
@@ -1756,7 +1753,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.levels_edit_band = 3
             self.update_levels()
 
-    def mouse_gesture_tracking(self, dx, dy, speed=1., dynamic=True):
+    def mouse_compare_tracking(self, dx, dy, speed=1., dynamic=True):
         if self.gesture_mode_timeout > self.timer.time:
             self.rearm_gesture_timeout(.1)
             self.mouse_buffer[1] = 0
@@ -1825,8 +1822,6 @@ class ModernSlideShower(mglw.WindowConfig):
         new_image_category = restrict(old_image_category + (1 if go_right else -1), -1, 1)
         self.image_categories[working_index] = new_image_category
         self.tinder_last_choice = new_image_category
-        # self.tinder_stats[old_image_category + 1] -= 1
-        # self.tinder_stats[new_image_category + 1] += 1
         self.tinder_stats_d[old_image_category] -= 1
         self.tinder_stats_d[new_image_category] += 1
         self.mouse_buffer *= 0
@@ -1957,7 +1952,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if self.switch_mode == SWITCH_MODE_CIRCLES:
                 self.mouse_circle_tracking()
             elif self.switch_mode == SWITCH_MODE_COMPARE:
-                self.mouse_gesture_tracking(dx, dy, speed=.2, dynamic=False)
+                self.mouse_compare_tracking(dx, dy, speed=.2, dynamic=False)
             elif self.switch_mode == SWITCH_MODE_TINDER:
                 self.mouse_tin_tracking(dx, dy)
 
@@ -2586,7 +2581,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.mandelbrot_routine(self.current_frame_start_time, frame_time_chunk)
             self.picture_vao.render(self.gl_program_mandel[self.mandel_id], vertices=1)
         else:
-            self.update_position()
+            self.update_gl_variables()
             if self.interface_mode == InterfaceMode.LEVELS:
                 self.read_and_clear_histo()
             if self.transition_stage < 1:
@@ -2668,7 +2663,7 @@ class ModernSlideShower(mglw.WindowConfig):
             return 0.5 * (1 + math.tanh(k * (x - 0.5)))
 
         self.program_id = 1 - self.program_id
-        self.update_position()
+        self.update_gl_variables()
         self.gl_program_compare['line_position'] = 1 - self.split_line
         self.gl_program_pic[self.program_id]['half_picture'] = self.split_line - 1 * (self.mouse_move_cumulative < 0)
         split_curve = (self.mouse_move_cumulative / 100 % 1)
