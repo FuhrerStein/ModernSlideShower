@@ -10,3 +10,4 @@ scipy
 rawpy
 moderngl_window
 natsort
+tomli_w

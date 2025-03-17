@@ -8,7 +8,9 @@ import os
 import random
 import shutil
 import tomllib
-
+import textwrap
+# import exifread
+# import subprocess  # For ExifTool integration
 import moderngl
 import moderngl_window as mglw
 import moderngl_window.context.base
@@ -19,7 +21,8 @@ import mpmath
 import numpy as np
 import rawpy
 import tomli_w
-from PIL import Image, ImageDraw, ImageOps
+import xml.etree.ElementTree as ET
+from PIL import Image, ImageDraw, ImageOps, ExifTags
 from moderngl_window.integrations.imgui import ModernglWindowRenderer
 from moderngl_window.opengl import program, vao
 from mpmath import mp
@@ -119,11 +122,45 @@ def reorient_image(im):
         im = im.transpose(operation)
     return im
 
+def decode_value(value):
+    if isinstance(value, bytes):  # If it's binary data
+        try:
+            return value.decode('utf-8')  # Try UTF-8 decoding
+        except UnicodeDecodeError:
+            try:
+                return value.decode('utf-16')  # Try UTF-16 decoding
+            except UnicodeDecodeError:
+                return f"Binary data: {value[:10]}..."  # If undecodable, truncate and mark as binary
+    return value  # Return as-is if not binary
 
-# def load_settings():
-#     if os.path.isfile("settings.json"):
-#         with open("settings.json", 'r') as f:
-#             return json.load(f)
+def decode_exif(exif_data):
+    metadata_text = [f"-= Exif data =-\n"]
+    readable_exif = {ExifTags.TAGS.get(k, f"Unknown-{k}"): decode_value(v) for k, v in exif_data.items()}
+    for tag, value in readable_exif.items():
+        metadata_text.append(f"{tag}: {value}\n")
+    return metadata_text
+
+def extract_metadata(im_object):
+    metadata_text = []
+    exif_data = im_object._getexif()
+    if exif_data:
+        metadata_text += decode_exif(exif_data)
+
+    for key, value in im_object.info.items():
+        if key == "xmp":
+            key_string = '{http://purl.org/dc/elements/1.1/}description'
+            to_parse = value[:-1] if value[-1] == 0 else value
+            line = ET.fromstring(to_parse).find("*").find("*").attrib
+            if key_string in line:
+                metadata_text.append(textwrap.fill(line[key_string], 100))
+        elif isinstance(value, str):
+            if key == "parameters":
+                metadata_text.append("-= Parameters =-\n")
+                split_params = value.splitlines()
+                metadata_text += (textwrap.fill(line, 100) for line in split_params)
+            else:
+                metadata_text.append(f"{key}: {value}\n")
+    return metadata_text
 
 
 def load_image(path_target, do_thumb=False):
@@ -141,16 +178,30 @@ def load_image(path_target, do_thumb=False):
             path_target = io.BytesIO(thumb.data)
 
         with Image.open(path_target) as im_object:
-            im_exif = im_object.info.get("exif", b'')
+            metadata_text = extract_metadata(im_object)
 
-            if im_object.mode == "RGB":
-                im_object = reorient_image(im_object)
-            else:
-                im_object = reorient_image(im_object).convert(mode="RGB")
+            # for key, value in im_object.info.items():
+            #     if key == "xmp":
+            #         key_string = '{http://purl.org/dc/elements/1.1/}description'
+            #         to_parse = value[:-1] if value[-1] == 0 else value
+            #         line = ET.fromstring(to_parse).find("*").find("*").attrib
+            #         if key_string in line:
+            #             metadata_text.append(textwrap.fill(line[key_string], 100))
+            #     elif isinstance(value, str):
+            #         if key == "parameters":
+            #             metadata_text.append("-= Parameters =-\n")
+            #             split_params = value.splitlines()
+            #             metadata_text += (textwrap.fill(line, 100) for line in split_params)
+            #         else:
+            #             metadata_text.append(f"{key}: {value}\n")
+            im_exif = im_object.info.get("exif", b'')
+            im_object = reorient_image(im_object)
+            if im_object.mode != "RGB":
+                im_object = im_object.convert(mode="RGB")
             if do_thumb:
                 im_object.thumbnail((256, 256))
                 im_object = ImageOps.pad(im_object, (256, 256))
-            return im_object.tobytes(), Point(im_object.width, im_object.height), im_exif
+            return im_object.tobytes(), Point(im_object.width, im_object.height), im_exif, metadata_text
     except Exception as e:
         if do_thumb:
             return draw_dummy(), Point(0, 0), b''
@@ -191,6 +242,7 @@ class Configs(Enum):
     STARTING_ZOOM_FACTOR = "initial_zoom"
     PIXEL_SIZE = "pixel_squareness"
     FULL_SCREEN_ID = "full_screen_monitor_id"
+    MOUSE_SPEED = "mouse_speed"
 
     Values = (HIDE_BORDERS,
               TRANSITION_DURATION,
@@ -198,6 +250,7 @@ class Configs(Enum):
               STARTING_ZOOM_FACTOR,
               PIXEL_SIZE,
               FULL_SCREEN_ID,
+              MOUSE_SPEED,
               )
 
     DESCRIPTIONS = {
@@ -207,6 +260,7 @@ class Configs(Enum):
         STARTING_ZOOM_FACTOR: "Zoom of newly shown image",
         PIXEL_SIZE: "Pixel shape in case of extreme zoom",
         FULL_SCREEN_ID: "ID of the full screen monitor",
+        MOUSE_SPEED: "Speed of reaction to mouse movements"
     }
 
     FORMATS = {
@@ -216,6 +270,7 @@ class Configs(Enum):
         STARTING_ZOOM_FACTOR: (0, 5, '%.3f', 0),
         PIXEL_SIZE: (0, 100, '%.2f', 32),
         FULL_SCREEN_ID: (0, 3, '%.0f', 0),
+        MOUSE_SPEED: (0.1, 10, '%.2f', 0),
     }
 
 
@@ -229,6 +284,7 @@ class Config:
             Configs.STARTING_ZOOM_FACTOR.value: 0.98,
             Configs.PIXEL_SIZE.value: 0,
             Configs.FULL_SCREEN_ID.value: 1,
+            Configs.MOUSE_SPEED.value: 1,
         }
         self.settings = self.defaults.copy()
         self.load_settings()
@@ -327,6 +383,7 @@ class ModernSlideShower(mglw.WindowConfig):
 
     image_original_size = Point(0, 0)
     im_exif = b''
+    im_metadata_text = ''
 
     common_path = ""
     parent_path = ""  # all path lower than parent is considered as subfolders.
@@ -817,20 +874,29 @@ class ModernSlideShower(mglw.WindowConfig):
     def load_plain_list_file(self, filename):
         print("Opening plain list", filename)
         with open(filename, 'r', encoding='utf-8') as file_handle:
+            def skip_lines(lines):
+                for _ in range(lines):
+                    next(file_handle, False)
+                return next(file_handle, False)
             if program_args.skip_load:
-                def skip_lines(lines):
-                    for _ in range(lines):
-                        next(file_handle, False)
-                    return next(file_handle, False)
                 loaded_list = []
                 last_line = 0
                 skip_step = 2 ** program_args.skip_load
                 sp = (-skip_step // 50 - 1, skip_step // 30 + 1, skip_step // 2 + 1)
-                skip_lines(random.randint(0, skip_step))
+                skip_lines(random.randint(1, skip_step))
                 while last_line := skip_lines(skip_step if last_line else 0):
                     loaded_list.append(last_line.rstrip())
                     skip_step = max(skip_step + random.randint(*sp[:2]), sp[2])
-
+            elif program_args.skip_load_exp:
+                loaded_list = []
+                last_line = 0
+                skip_step = program_args.skip_load_exp
+                # sp = (-skip_step // 50 - 1, skip_step // 30 + 1, skip_step // 2 + 1)
+                skip_lines(random.randint(1, 50))
+                last_skip = 1 + skip_step / 10 + random.randint(0, 50) / 500
+                while last_line := skip_lines(int(last_skip) if last_line else 0):
+                    loaded_list.append(last_line.rstrip())
+                    last_skip = last_skip * (1 + skip_step / 10)
             else:
                 loaded_list = [line.rstrip() for line in file_handle.readlines()]
 
@@ -1011,7 +1077,7 @@ class ModernSlideShower(mglw.WindowConfig):
             if image_path != EMPTY_IMAGE_LIST:
                 print("Error loading ", image_path, image_load_result[1])
             return load_failed()
-        image_bytes, self.image_original_size, self.im_exif = image_load_result
+        image_bytes, self.image_original_size, self.im_exif, self.im_metadata_text = image_load_result
         self.current_image_file_size = os.stat(image_path).st_size
 
         self.wnd.title = "ModernSlideShower: " + image_path
@@ -1105,6 +1171,10 @@ class ModernSlideShower(mglw.WindowConfig):
         self.last_image_folder = current_folder
 
     def file_copy_move_routine(self, do_copy=False):
+        if self.switch_mode == SWITCH_MODE_TINDER and do_copy:
+            self.file_operation(self.image_index, "_Copy", True)
+            self.schedule_pop_message(14, count=1, duration=10)
+            return
         mouse_cumulative = self.mouse_move_cumulative
         split_line = self.split_line
         im_index_current = self.image_index
@@ -1380,6 +1450,62 @@ class ModernSlideShower(mglw.WindowConfig):
     #     self.load_image()
     #     self.unschedule_pop_message(8)
 
+    # def display_metadata(self, file_path):
+    #     # self.metadata_text.delete(1.0, tk.END)
+    #
+    #     # Read EXIF data using exifread
+    #     with open(file_path, 'rb') as f:
+    #         try:
+    #             tags = exifread.process_file(f, details=True)
+    #         except Exception as e:
+    #             pass
+    #
+    #     metadata_text = ""
+    #     # Read PNG metadata if it's a PNG file
+    #     if file_path.lower().endswith('.png'):
+    #         metadata_text += "PNG Metadata:\n"
+    #         try:
+    #             img = Image.open(file_path)
+    #             if 'parameters' in img.info:
+    #                 # replaced_params = self.apply_tag_replacements(str(img.info['parameters']))
+    #                 replaced_params = str(img.info['parameters'])
+    #                 metadata_text += f"Parameters: \n{replaced_params}\n"
+    #             for key, value in img.info.items():
+    #                 if key not in ['parameters']:
+    #                     # replaced_key = self.apply_tag_replacements(str(key))
+    #                     # replaced_value = self.apply_tag_replacements(str(value))
+    #                     # metadata_text += f"{replaced_key}: {replaced_value}\n"
+    #                     metadata_text += f"{key}: {value}\n"
+    #         except Exception as e:
+    #             metadata_text += f"Error reading PNG metadata: {str(e)}\n"
+    #
+    #     # Read metadata using ExifTool if available
+    #     try:
+    #         startupinfo = None
+    #         if os.name == 'nt':  # Windows
+    #             startupinfo = subprocess.STARTUPINFO()
+    #             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    #             startupinfo.wShowWindow = subprocess.SW_HIDE
+    #
+    #         result = subprocess.run(['exiftool', file_path],
+    #                                 capture_output=True,
+    #                                 text=True,
+    #                                 startupinfo=startupinfo)
+    #         if result.returncode == 0:
+    #             metadata_text += "\nExifTool Metadata:\n" + result.stdout
+    #             # replaced_text = self.apply_tag_replacements(result.stdout)
+    #             # self.metadata_text.insert(tk.END, "\nExifTool Metadata:\n")
+    #             # self.metadata_text.insert(tk.END, replaced_text)
+    #     except FileNotFoundError:
+    #         if not tags:
+    #             metadata_text += "\nNote: Install ExifTool for additional metadata support\n"
+    #
+    #     # Display EXIF data if any
+    #     if tags:
+    #         metadata_text += "\nEXIF Metadata:\n"
+    #         for tag, value in tags.items():
+    #             metadata_text += f"{tag}: {value}\n"
+
     def rand_new_image_index(self, jump_type):
         match jump_type:
             case Actions.IMAGE_RANDOM_UNSEEN_FILE:
@@ -1642,7 +1768,7 @@ class ModernSlideShower(mglw.WindowConfig):
         self.gl_program_pic[self.program_id]['useCurves'] = (self.interface_mode == InterfaceMode.LEVELS) and \
                                                             self.levels_enabled
         self.gl_program_pic[self.program_id]['count_histograms'] = self.interface_mode == InterfaceMode.LEVELS
-        self.gl_program_pic[self.program_id]['show_amount'] = self.transition_stage
+        self.gl_program_pic[self.program_id]['show_amount'] = smootherstep_ease(self.transition_stage * 1.2)
         self.gl_program_pic[self.program_id]['hide_borders'] = config.get(Configs.HIDE_BORDERS)
         self.gl_program_pic[self.program_id]['inter_blur'] = config.get(Configs.INTER_BLUR)
         self.gl_program_pic[self.program_id]['pixel_size'] = config.get(Configs.PIXEL_SIZE)
@@ -1657,7 +1783,7 @@ class ModernSlideShower(mglw.WindowConfig):
             self.gl_program_pic[self.program_id]['half_picture'] = self.split_line - 1 * (
                     self.mouse_move_cumulative > 0)
         else:
-            self.gl_program_pic[1 - self.program_id]['transparency'] = smootherstep_ease(self.transition_stage * 1.2)
+            self.gl_program_pic[1 - self.program_id]['transparency'] = smootherstep_ease(self.transition_stage * .9)
             self.gl_program_pic[self.program_id]['half_picture'] = 0
 
         if self.switch_mode == SWITCH_MODE_TINDER and self.transition_stage < 1:
@@ -1938,7 +2064,8 @@ class ModernSlideShower(mglw.WindowConfig):
         if self.pressed_mouse:  # on some systems drag registers as positioning
             self.mouse_drag_event(x, y, dx, dy)
             return
-        self.mouse_buffer += [dx, dy]
+        speed_scale = config.get(Configs.MOUSE_SPEED)
+        self.mouse_buffer += [dx * speed_scale, dy * speed_scale]
 
         if self.interface_mode == InterfaceMode.GENERAL:
             if self.small_zoom:
@@ -3014,7 +3141,10 @@ class ModernSlideShower(mglw.WindowConfig):
             f"Current zoom: {self.pic_zoom * 100:.1f}%",
             f"Visual rotation angle: {self.pic_angle:.2f}°", ]
 
-        self.imgui_show_info_window(info_text, "Image info", next_bottom)
+        next_bottom = self.imgui_show_info_window(info_text, "Image info", next_bottom)
+        # self.imgui_show_info_window(textwrap.wrap(self.im_metadata_text, width=int(10 + len(self.im_metadata_text)**.6)), "Metadata", next_bottom)
+        self.imgui_show_info_window(self.im_metadata_text, "Metadata", next_bottom)
+
 
     def imgui_rapid_menu(self):
         grid_element_size = self.imgui_io.display_size.y // 12
@@ -3360,20 +3490,11 @@ class ModernSlideShower(mglw.WindowConfig):
 
 
 def main_loop() -> None:
-    # mglw.setup_basic_logging(20)  # logging.INFO
-    # start_fullscreen = False if "-f" in sys.argv else True
-    # exclude_plus_minus = "-exclude_plus_minus" in sys.argv
-    # random_folder_mode = "-random_folder_mode" in sys.argv
-
-    # enable_vsync = True
-    # window = mglw.get_local_window_cls('pyglet')(fullscreen=start_fullscreen, vsync=enable_vsync)
     thumb_queue_tasks, thumb_queue_data, thumb_loader = init_image_loader(do_thumb=True)
     image_queue_tasks, image_queue_data, image_loader = init_image_loader()
     window = mglw.get_local_window_cls('pyglet')(vsync=True)
     display = pyglet.canvas.get_display()
     screens = display.get_screens()
-    # load_screen_id = int(config.get(Configs.FULL_SCREEN_ID))
-    # load_screen_id = 0 if load_screen_id >= len(screens) else load_screen_id
     load_screen_id = min(int(config.get(Configs.FULL_SCREEN_ID)), len(screens) - 1)
 
     if program_args.full_screen:
@@ -3384,10 +3505,6 @@ def main_loop() -> None:
     mglw.activate_context(window=window)
 
     window.config = ModernSlideShower(ctx=window.ctx, wnd=window, timer=timer)
-    # window.config.exclude_plus_minus = "-exclude_plus_minus" in sys.argv
-    # window.config.random_folder_mode = "-random_folder_mode" in sys.argv
-    # if "-scan_all_files" in sys.argv:
-    #     window.config.scan_all_files = True
 
     timer.next_frame()
     timer.next_frame()
@@ -3425,6 +3542,8 @@ def setup_parser():
     parser.add_argument("-t", "--tinder_mode", action="store_true", help="Open viewer in accept/reject mode")
     parser.add_argument("--skip_load", type=int, choices=range(0, 20),
                         help="A level of skipping when loading list. At 1 skip every two images, at N skip every 2^N+1 image.")
+    parser.add_argument("--skip_load_exp", type=int, choices=range(0, 20),
+                        help="A level of skipping when loading list, accelerated. Every next skip is equal to previous times (1 + skip/10) + 1")
     parser.add_argument("-e", "--exclude_sorted", action="store_true", help="Do not process directories named ++ or --")
     parser.add_argument("-i", "--ignore_extention", action="store_true",
                         help="Try to open every file regardless of its extension, scan all files.")
